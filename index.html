@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PDF Studio — layered PDF editor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;600&family=Dancing+Script:wght@400;600&family=Great+Vibes&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<!-- ===================== ICON SPRITE ===================== -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h9a6 6 0 0 1 0 12h-2"/></symbol>
+    <symbol id="i-redo" viewBox="0 0 24 24"><path d="M15 14l5-5-5-5"/><path d="M20 9h-9a6 6 0 0 0 0 12h2"/></symbol>
+    <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-chevron-left" viewBox="0 0 24 24"><path d="M14 6l-6 6 6 6"/></symbol>
+    <symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="M10 6l6 6-6 6"/></symbol>
+    <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="M6 10l6 6 6-6"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13M10 11v5M14 11v5"/></symbol>
+    <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M4 20l4-1L19 8l-3-3L5 16z"/><path d="M14 7l3 3"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v10M8 10l4 4 4-4M5 20h14"/></symbol>
+    <symbol id="i-scissors" viewBox="0 0 24 24"><circle cx="6" cy="6" r="2.4"/><circle cx="6" cy="18" r="2.4"/><path d="M8 7.5l12 9M8 16.5L20 7.5"/></symbol>
+    <symbol id="i-restore" viewBox="0 0 24 24"><path d="M4 10a8 8 0 1 1 2.4 7.7"/><path d="M4 4v6h6"/></symbol>
+    <symbol id="i-rotate-cw" viewBox="0 0 24 24"><path d="M20 10a8 8 0 1 0-2.4 7.7"/><path d="M20 4v6h-6"/></symbol>
+    <symbol id="i-rotate-180" viewBox="0 0 24 24"><path d="M4 10a8 8 0 0 1 14-5"/><path d="M20 14a8 8 0 0 1-14 5"/><path d="M18 2v5h-5M6 22v-5h5"/></symbol>
+    <symbol id="i-arrow-up" viewBox="0 0 24 24"><path d="M12 20V5M6 11l6-6 6 6"/></symbol>
+    <symbol id="i-arrow-down" viewBox="0 0 24 24"><path d="M12 4v15M6 13l6 6 6-6"/></symbol>
+    <symbol id="i-front" viewBox="0 0 24 24"><path d="M12 19V6M6 12l6-6 6 6"/><path d="M4 3h16"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="M12 5v13M6 12l6 6 6-6"/><path d="M4 21h16"/></symbol>
+    <symbol id="i-align-left" viewBox="0 0 24 24"><path d="M4 6h16M4 12h9M4 18h13"/></symbol>
+    <symbol id="i-align-center" viewBox="0 0 24 24"><path d="M4 6h16M8 12h8M6 18h12"/></symbol>
+    <symbol id="i-align-right" viewBox="0 0 24 24"><path d="M4 6h16M11 12h9M7 18h13"/></symbol>
+    <symbol id="i-sparkles" viewBox="0 0 24 24"><path d="M11 3l1.5 4L17 8.5 13 10l-2 4-1.5-4L5 8.5 9 7z"/><path d="M18 14l.9 2.1L21 17l-2.1.9L18 20l-.9-2.1L15 17l2.1-.9z"/></symbol>
+    <symbol id="i-save" viewBox="0 0 24 24"><path d="M4 5h13l3 3v11H4z"/><path d="M8 5v5h7V5M8 19v-6h8v6"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="2.6"/></symbol>
+    <symbol id="i-eye-off" viewBox="0 0 24 24"><path d="M3 3l18 18"/><path d="M10.6 6.2A9.8 9.8 0 0 1 12 6c6.5 0 10 6 10 6a17 17 0 0 1-3.1 3.7M6.6 6.8A17.6 17.6 0 0 0 2 12s3.5 6 10 6c1.3 0 2.5-.2 3.6-.7"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></symbol>
+    <symbol id="i-unlock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 7.5-2"/></symbol>
+    <symbol id="i-grip" viewBox="0 0 24 24"><circle cx="9" cy="6" r="1.1" fill="currentColor" stroke="none"/><circle cx="15" cy="6" r="1.1" fill="currentColor" stroke="none"/><circle cx="9" cy="12" r="1.1" fill="currentColor" stroke="none"/><circle cx="15" cy="12" r="1.1" fill="currentColor" stroke="none"/><circle cx="9" cy="18" r="1.1" fill="currentColor" stroke="none"/><circle cx="15" cy="18" r="1.1" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-text" viewBox="0 0 24 24"><path d="M5 5h14M12 5v14M8.5 19h7"/></symbol>
+    <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M4 17l5-5 4 4 3-3 4 4"/></symbol>
+    <symbol id="i-line" viewBox="0 0 24 24"><path d="M4 19L20 5"/></symbol>
+    <symbol id="i-ellipse" viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="8" ry="6"/></symbol>
+    <symbol id="i-rect" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="1"/></symbol>
+    <symbol id="i-patch" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="1"/><path d="M5 17L17 5"/></symbol>
+    <symbol id="i-doc" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></symbol>
+  </defs>
+</svg>
+
+<header class="topbar">
+  <div class="group left">
+    <label id="openBtn" class="btn primary" for="pdfInput" role="button" tabindex="0">Open PDF</label>
+    <input type="file" id="pdfInput" accept="application/pdf,.pdf" hidden />
+    <input type="file" id="fileInput" accept="image/*" hidden />
+    <span id="fileName" class="filename">No file open</span>
+  </div>
+
+  <div class="group center">
+    <button id="undoBtn" class="btn icon" title="Undo (Ctrl+Z)"><svg class="ico"><use href="#i-undo"/></svg></button>
+    <button id="redoBtn" class="btn icon" title="Redo (Ctrl+Y)"><svg class="ico"><use href="#i-redo"/></svg></button>
+    <span class="sep"></span>
+    <button id="zoomOutBtn" class="btn icon" title="Zoom out"><svg class="ico"><use href="#i-minus"/></svg></button>
+    <span id="zoomLabel" class="pill">100%</span>
+    <button id="zoomInBtn" class="btn icon" title="Zoom in"><svg class="ico"><use href="#i-plus"/></svg></button>
+    <button id="fitBtn" class="btn" title="Fit to view">Fit</button>
+    <span class="sep"></span>
+    <button id="prevPageBtn" class="btn icon" title="Previous page"><svg class="ico"><use href="#i-chevron-left"/></svg></button>
+    <span id="pageLabel" class="pill">– / –</span>
+    <button id="nextPageBtn" class="btn icon" title="Next page"><svg class="ico"><use href="#i-chevron-right"/></svg></button>
+    <button id="addPageBtn" class="btn icon" title="Insert blank page after this one"><svg class="ico"><use href="#i-plus"/></svg></button>
+    <button id="delPageBtn" class="btn icon" title="Delete this page"><svg class="ico"><use href="#i-trash"/></svg></button>
+    <button id="pagesBtn" class="btn" title="Manage all pages">Pages</button>
+    <button id="mergeBtn" class="btn" title="Merge PDFs or split this document">Merge / Split</button>
+  </div>
+
+  <div class="group right">
+    <div class="menu">
+      <button id="exportBtn" class="btn primary">Export <svg class="ico"><use href="#i-chevron-down"/></svg></button>
+      <div class="menu-items" id="exportMenu">
+        <button data-mode="vector">
+          <strong>Vector PDF</strong>
+          <small>Keeps original text & vectors, adds your edits</small>
+        </button>
+        <button data-mode="flatten">
+          <strong>Flattened PDF</strong>
+          <small>Exact pixels, everything baked as images</small>
+        </button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main>
+  <aside class="tools" id="toolbar">
+    <button class="tool active" data-tool="select" title="Select / edit text (V)">
+      <svg viewBox="0 0 24 24"><path d="M5 3l13 8-5.4 1.2L9.6 19z"/></svg><span>Select</span>
+    </button>
+    <button class="tool" data-tool="rotate" title="Rotate by dragging an object on the page (G)">
+      <svg viewBox="0 0 24 24"><path d="M20 10a8 8 0 1 0-2.4 7.7"/><path d="M20 4v6h-6"/></svg><span>Rotate</span>
+    </button>
+    <button class="tool" data-tool="text" title="Add text (T)">
+      <svg viewBox="0 0 24 24"><path d="M5 5h14M12 5v14M8.5 19h7"/></svg><span>Text</span>
+    </button>
+    <button class="tool" data-tool="patch" title="Patch / whiteout (B)">
+      <svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2"/></svg><span>Patch</span>
+    </button>
+    <button class="tool" data-tool="image" title="Place image (I)">
+      <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.8"/><path d="M4 17l5-5 4 4 3-3 4 4"/></svg><span>Image</span>
+    </button>
+    <button class="tool" data-tool="rect" title="Rectangle (R)">
+      <svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="1"/></svg><span>Box</span>
+    </button>
+    <button class="tool" data-tool="ellipse" title="Ellipse (O)">
+      <svg viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="8" ry="6"/></svg><span>Ellipse</span>
+    </button>
+    <button class="tool" data-tool="line" title="Line (L)">
+      <svg viewBox="0 0 24 24"><path d="M4 19L20 5"/></svg><span>Line</span>
+    </button>
+    <button class="tool" data-tool="pen" title="Freehand pen (P)">
+      <svg viewBox="0 0 24 24"><path d="M4 20l3-1 10-10-2-2L5 17z"/><path d="M15 6l2-2 3 3-2 2"/></svg><span>Pen</span>
+    </button>
+    <button class="tool" data-tool="highlight" title="Highlighter (H)">
+      <svg viewBox="0 0 24 24"><path d="M5 19h14"/><path d="M8 15l6-9 4 3-6 9z"/></svg><span>Mark</span>
+    </button>
+    <button class="tool" data-tool="detach" title="Detach an original image so you can move or delete it (D)">
+      <svg viewBox="0 0 24 24"><rect x="3" y="4" width="12" height="10" rx="1.5"/><path d="M9 16l3 4 3-4"/><path d="M12 12v8"/><path d="M18 7h3M19.5 5.5v3"/></svg><span>Detach</span>
+    </button>
+    <button class="tool" data-action="bg" title="Remove a background with magic wand, lasso or smart select">
+      <svg viewBox="0 0 24 24"><path d="M4 20l6-6"/><path d="M9 4l1.2 3.8L14 9l-3.8 1.2L9 14l-1.2-3.8L4 9l3.8-1.2z"/><path d="M18 13l.8 2.2L21 16l-2.2.8L18 19l-.8-2.2L15 16l2.2-.8z"/></svg><span>BG</span>
+    </button>
+    <button class="tool" data-action="signature" title="Draw, type or upload a signature">
+      <svg viewBox="0 0 24 24"><path d="M4 19c4-1 5-12 9-12 2 0 2 3 1 5s-1 5 2 5c1 0 2-.4 3-1"/><path d="M4 21h16"/></svg><span>Sign</span>
+    </button>
+    <button class="tool" data-action="table" title="Insert an editable table">
+      <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="1.5"/><path d="M3 9h18M3 14.5h18M9 4v16M15 4v16"/></svg><span>Table</span>
+    </button>
+  </aside>
+
+  <section class="stage" id="stage">
+    <div class="page" id="pageWrap">
+      <canvas id="bgCanvas"></canvas>
+      <canvas id="c"></canvas>
+    </div>
+
+    <div class="empty" id="emptyState">
+      <div class="empty-card">
+        <label class="empty-icon" for="pdfInput" title="Choose a PDF"><svg class="ico"><use href="#i-doc"/></svg></label>
+        <h2>Open a PDF to start</h2>
+        <p>Drag &amp; drop a PDF anywhere, or click <b>Open PDF</b>.</p>
+        <p class="hint">Double-click a word on the page to edit just that word.<br />
+        Alt/Shift + double-click edits the whole line or table cell.</p>
+        <label class="btn primary" id="emptyOpenBtn" for="pdfInput" role="button" tabindex="0">Choose PDF</label>
+      </div>
+    </div>
+
+    <div class="drop-veil" id="dropVeil"><span>Drop PDF or image here</span></div>
+  </section>
+
+  <aside class="panel">
+    <div class="panel-section">
+      <h3>Properties</h3>
+
+      <div class="row">
+        <label class="lbl">Fill</label>
+        <div class="colorwrap">
+          <input type="color" id="fillColor" value="#111827" />
+          <span class="swatches">
+            <button data-color="#000000" style="background:#000"></button>
+            <button data-color="#ffffff" style="background:#fff"></button>
+            <button data-color="#ef4444" style="background:#ef4444"></button>
+            <button data-color="#f59e0b" style="background:#f59e0b"></button>
+            <button data-color="#22c55e" style="background:#22c55e"></button>
+            <button data-color="#3b82f6" style="background:#3b82f6"></button>
+          </span>
+        </div>
+      </div>
+
+      <div class="row">
+        <label class="lbl">Stroke</label>
+        <div class="colorwrap">
+          <input type="color" id="strokeColor" value="#3b82f6" />
+          <span class="swatches">
+            <button data-color="#000000" data-target="stroke" style="background:#000"></button>
+            <button data-color="#ffffff" data-target="stroke" style="background:#fff"></button>
+            <button data-color="#ef4444" data-target="stroke" style="background:#ef4444"></button>
+            <button data-color="#22c55e" data-target="stroke" style="background:#22c55e"></button>
+            <button data-color="#3b82f6" data-target="stroke" style="background:#3b82f6"></button>
+          </span>
+        </div>
+      </div>
+
+      <div class="row two">
+        <div>
+          <label class="lbl">Stroke width</label>
+          <input type="number" id="strokeWidth" value="2" min="0" max="40" step="0.5" />
+        </div>
+        <div>
+          <label class="lbl">Opacity</label>
+          <input type="number" id="opacityInput" value="1" min="0" max="1" step="0.05" />
+        </div>
+      </div>
+
+      <div class="row two">
+        <div>
+          <label class="lbl">Angle (°)</label>
+          <input type="number" id="angleInput" value="0" step="1" title="Exact rotation of the selected object" />
+        </div>
+        <div>
+          <label class="lbl">Rotate 90°</label>
+          <div class="seg wide">
+            <button data-rotate="-90" title="Rotate left"><svg class="ico"><use href="#i-restore"/></svg></button>
+            <button data-rotate="90" title="Rotate right"><svg class="ico"><use href="#i-rotate-cw"/></svg></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="row">
+        <label class="check"><input type="checkbox" id="lockObj" /> Lock the selected object(s)</label>
+      </div>
+
+      <div class="row">
+        <label class="lbl">Font</label>
+        <select id="fontFamily">
+          <option value="helvetica">Helvetica / Arial</option>
+          <option value="times">Times / Serif</option>
+          <option value="courier">Courier / Mono</option>
+        </select>
+      </div>
+
+      <div class="row two">
+        <div>
+          <label class="lbl">Size (pt)</label>
+          <input type="number" id="fontSize" value="18" min="1" max="400" step="0.5" />
+        </div>
+        <div>
+          <label class="lbl">Style</label>
+          <div class="seg">
+            <button id="boldBtn" data-style="bold" title="Bold">B</button>
+            <button id="italicBtn" data-style="italic" title="Italic"><em>I</em></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="row">
+        <label class="lbl">Align</label>
+        <div class="seg wide">
+          <button data-align="left" class="active" title="Left"><svg class="ico"><use href="#i-align-left"/></svg></button>
+          <button data-align="center" title="Center"><svg class="ico"><use href="#i-align-center"/></svg></button>
+          <button data-align="right" title="Right"><svg class="ico"><use href="#i-align-right"/></svg></button>
+        </div>
+      </div>
+
+      <div class="row">
+        <label class="lbl">Text</label>
+        <div class="seg wide">
+          <button id="removePatchBtn" title="Delete the background patch under the selected text">No patch</button>
+        </div>
+      </div>
+
+      <div class="row">
+        <label class="check"><input type="checkbox" id="autoPatch" checked /> Patch samples page colour automatically</label>
+      </div>
+      <div class="row">
+        <label class="check"><input type="checkbox" id="patchOnReplace" checked /> Cover replaced text with a patch (uncheck for transparent text)</label>
+      </div>
+
+      <div class="row arrange">
+        <button class="btn tiny" data-arrange="front" title="Bring to front"><svg class="ico"><use href="#i-front"/></svg></button>
+        <button class="btn tiny" data-arrange="forward" title="Bring forward"><svg class="ico"><use href="#i-arrow-up"/></svg></button>
+        <button class="btn tiny" data-arrange="backward" title="Send backward"><svg class="ico"><use href="#i-arrow-down"/></svg></button>
+        <button class="btn tiny" data-arrange="back" title="Send to back"><svg class="ico"><use href="#i-back"/></svg></button>
+        <button class="btn tiny danger" data-arrange="delete" title="Delete (Del)"><svg class="ico"><use href="#i-trash"/></svg></button>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <h3>Tables <span class="count" id="tableCount">0</span></h3>
+      <div class="tables" id="tables">
+        <div class="empty-layers">Open a PDF to find tables.</div>
+      </div>
+      <p class="hint">Pencil makes every cell editable · CSV saves the values · the download button saves the table image.</p>
+    </div>
+
+    <div class="panel-section">
+      <h3>Original images <span class="count" id="origCount">0</span></h3>
+      <div class="originals" id="originals">
+        <div class="empty-layers">Open a PDF to scan its images.</div>
+      </div>
+      <div class="row" style="margin: 8px 0 0">
+        <button class="btn tiny" id="restoreOriginalsBtn" title="Bring back every original image hidden on this page"><svg class="ico"><use href="#i-restore"/></svg> Restore originals</button>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <h3>Fonts</h3>
+      <div class="row two">
+        <button class="btn tiny" id="fontFileBtn" title="Add a .ttf / .otf / .woff font from your computer">+ Font file</button>
+        <button class="btn tiny" id="googleFontBtn" title="Load a font from Google Fonts by name">Google Font…</button>
+      </div>
+      <input type="file" id="fontInput" accept=".ttf,.otf,.woff,.woff2,font/ttf,font/otf,font/woff,font/woff2" hidden />
+      <div class="font-list" id="customFonts"></div>
+    </div>
+
+    <div class="panel-section">
+      <h3>Layers <span class="count" id="layerCount">0</span></h3>
+      <div class="row" style="margin: 0 0 8px">
+        <button class="btn tiny" id="exportLayerBtn" title="Save the selected layer(s) as a transparent PNG"><svg class="ico"><use href="#i-download"/></svg> Save selected layer PNG</button>
+      </div>
+      <div class="layers" id="layerList"></div>
+      <p class="hint">Ctrl / Shift-click a layer to select several, then save them as one PNG.</p>
+    </div>
+
+    <div class="panel-section tips">
+      <h3>Tips</h3>
+      <ul>
+        <li><b>Double-click a word</b> to edit just that word. Hold <b>Alt</b> or <b>Shift</b> while double-clicking to replace the whole line (or one table cell).</li>
+        <li>Uncheck <b>Cover replaced text with a patch</b> to get transparent text, then move it anywhere. <b>No patch</b> removes the patch under the selected text.</li>
+        <li><b>Tables</b> panel: the pencil makes every cell editable, CSV saves the values, the download button saves the table image. The <b>Table</b> tool inserts a new editable table (rows × columns, fill, border and page size). Click any cell to select the table, drag to move it as one unit; double-click a cell to type in it.</li>
+        <li>Use the <b>Detach</b> tool (D) or the scissors buttons to peel stacked images one layer at a time. Each layer can be saved as a PNG from the Layers panel.</li>
+        <li><b>Pages</b> opens a thumbnail grid: rotate, reorder, delete, add blank pages or insert pages from another PDF or image.</li>
+        <li><b>Merge / Split</b> combines several PDFs in drag order, or splits this document into ranges, chunks or single pages.</li>
+        <li><b>Background</b> removes a page or image background with the magic wand, lasso or smart select, then keeps it transparent or replaces the page.</li>
+        <li><b>Signature</b> lets you draw, type (with a font) or upload a signature, save it for reuse and place it on the page.</li>
+        <li>Select any layer to type an exact <b>angle</b>, lock it against accidental edits, or hide / reorder it in the Layers panel. Drag the round handle above a selection to rotate it with the mouse, or pick the <b>Rotate</b> tool (G) and drag the object itself.</li>
+        <li>Use <b>Patch</b> to paint over anything that must disappear.</li>
+        <li>Arrow keys nudge the selection by 1&nbsp;pt (hold Shift for 10&nbsp;pt).</li>
+        <li><b>Ctrl+Z</b> undo, <b>Ctrl+S</b> export.</li>
+      </ul>
+    </div>
+  </aside>
+</main>
+
+<!-- ===================== PAGES / THUMBNAILS ===================== -->
+<div class="modal" id="pagesModal" aria-hidden="true">
+  <div class="modal-card pages-card">
+    <header class="modal-head">
+      <h2>Pages</h2>
+      <span class="pill" id="pagesInfo">0 pages</span>
+      <button class="modal-x" id="pagesClose" title="Close">×</button>
+    </header>
+
+    <div class="pages-toolbar">
+      <button class="btn tiny" id="pagesRotateCCW" title="Rotate selected pages 90° anticlockwise"><svg class="ico"><use href="#i-restore"/></svg> 90°</button>
+      <button class="btn tiny" id="pagesRotateCW" title="Rotate selected pages 90° clockwise"><svg class="ico"><use href="#i-rotate-cw"/></svg> 90°</button>
+      <button class="btn tiny" id="pagesRotate180" title="Rotate selected pages 180°"><svg class="ico"><use href="#i-rotate-180"/></svg> 180°</button>
+      <span class="sep"></span>
+      <button class="btn tiny" id="pagesMoveUp" title="Move selected pages earlier"><svg class="ico"><use href="#i-arrow-up"/></svg></button>
+      <button class="btn tiny" id="pagesMoveDown" title="Move selected pages later"><svg class="ico"><use href="#i-arrow-down"/></svg></button>
+      <span class="sep"></span>
+      <button class="btn tiny danger" id="pagesDelete" title="Delete selected pages"><svg class="ico"><use href="#i-trash"/></svg> Delete</button>
+      <span class="selinfo" id="pagesSelInfo">No page selected</span>
+    </div>
+
+    <div class="pages-body">
+      <div class="page-grid" id="pageGrid"></div>
+
+      <aside class="pages-side">
+        <h3>Add pages</h3>
+
+        <div class="size-box" data-size-root="pages">
+          <div class="row two">
+            <div>
+              <label class="lbl">Page size</label>
+              <select data-size="preset">
+                <option value="a4">A4 (210 × 297 mm)</option>
+                <option value="a3">A3 (297 × 420 mm)</option>
+                <option value="letter">Letter (8.5 × 11 in)</option>
+                <option value="legal">Legal (8.5 × 14 in)</option>
+                <option value="custom">Custom</option>
+              </select>
+            </div>
+            <div>
+              <label class="lbl">Units</label>
+              <select data-size="unit">
+                <option value="mm">mm</option>
+                <option value="cm">cm</option>
+                <option value="in">inch</option>
+                <option value="px">px</option>
+                <option value="pt">pt</option>
+              </select>
+            </div>
+          </div>
+          <div class="row two">
+            <div>
+              <label class="lbl">Width</label>
+              <input type="number" data-size="w" value="210" min="10" step="1" />
+            </div>
+            <div>
+              <label class="lbl">Height</label>
+              <input type="number" data-size="h" value="297" min="10" step="1" />
+            </div>
+          </div>
+          <div class="row two">
+            <div>
+              <label class="lbl">Orientation</label>
+              <select data-size="orient">
+                <option value="portrait">Portrait</option>
+                <option value="landscape">Landscape</option>
+              </select>
+            </div>
+            <div>
+              <label class="lbl">&nbsp;</label>
+              <label class="check"><input type="checkbox" data-size="lock" checked /> Lock ratio</label>
+            </div>
+          </div>
+          <p class="hint" data-size="info"></p>
+        </div>
+
+        <div class="row two">
+          <button class="btn tiny" id="addBlankBefore">+ Blank before</button>
+          <button class="btn tiny" id="addBlankAfter">+ Blank after</button>
+        </div>
+        <div class="row two">
+          <button class="btn tiny" id="insertPdfBtn">Insert PDF…</button>
+          <button class="btn tiny" id="insertImagePageBtn">Insert image…</button>
+        </div>
+        <p class="hint">Click to select a page. Ctrl/Shift-click selects several. Drag a thumbnail to reorder. Double-click to open it.</p>
+      </aside>
+    </div>
+  </div>
+</div>
+<input type="file" id="insertPdfInput" accept="application/pdf,.pdf" multiple hidden />
+<input type="file" id="insertImagePageInput" accept="image/*" multiple hidden />
+
+<!-- ===================== MERGE / SPLIT ===================== -->
+<div class="modal" id="mergeModal" aria-hidden="true">
+  <div class="modal-card merge-card">
+    <header class="modal-head">
+      <h2>Merge &amp; Split</h2>
+      <button class="modal-x" id="mergeClose" title="Close">×</button>
+    </header>
+
+    <div class="seg wide tabs" id="mergeTabs">
+      <button data-mtab="merge" class="active">Merge PDFs</button>
+      <button data-mtab="split">Split current PDF</button>
+    </div>
+
+    <div data-mpane="merge">
+      <div class="merge-toolbar">
+        <button class="btn" id="mergeAddBtn"><svg class="ico"><use href="#i-plus"/></svg> Add PDF files…</button>
+        <button class="btn" id="mergeClearBtn">Clear all</button>
+        <span class="merge-info" id="mergeInfo">No pages added yet</span>
+      </div>
+      <input type="file" id="mergeInput" accept="application/pdf,.pdf" multiple hidden />
+      <div class="merge-files" id="mergeFiles"></div>
+      <p class="hint merge-hint">Every page from every PDF is shown below. Drag a page to reorder, use <b>↺</b> / <b>↻</b> to rotate that page, and <b>✕</b> to remove it. The merged PDF uses this exact order.</p>
+      <div class="merge-list" id="mergeList">
+        <div class="merge-empty">
+          <span class="merge-empty-icon"><svg class="ico"><use href="#i-doc"/></svg></span>
+          <strong>Add PDFs to start</strong>
+          <span>All pages from all files will appear here. Drag a page to reorder it, rotate it, or remove it before merging.</span>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn primary" id="mergeDownload">Merge &amp; download</button>
+        <button class="btn" id="mergeOpen">Merge &amp; open in editor</button>
+      </div>
+    </div>
+
+    <div data-mpane="split" hidden>
+      <div class="split-opts">
+        <label class="split-opt"><input type="radio" name="splitMode" value="range" checked /> Page range</label>
+        <input type="text" id="splitRange" placeholder="e.g. 1-5, 8-10" />
+        <label class="split-opt"><input type="radio" name="splitMode" value="every" /> Every N pages</label>
+        <input type="number" id="splitEvery" min="1" value="3" />
+        <label class="split-opt"><input type="radio" name="splitMode" value="single" /> One PDF per page</label>
+        <label class="split-opt"><input type="radio" name="splitMode" value="selected" /> Selected pages
+          <span class="hint" id="splitSelHint"></span>
+        </label>
+      </div>
+      <div class="modal-actions">
+        <button class="btn primary" id="splitDownload">Split &amp; download</button>
+      </div>
+      <p class="hint">Edits made in the editor are included. Separate files are packed into one ZIP.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== BACKGROUND REMOVAL ===================== -->
+<div class="modal" id="bgModal" aria-hidden="true">
+  <div class="modal-card bg-card">
+    <header class="modal-head">
+      <h2>Remove background</h2>
+      <span class="pill" id="bgTargetInfo">Page</span>
+      <button class="modal-x" id="bgClose" title="Close">×</button>
+    </header>
+
+    <div class="bg-toolbar">
+      <div class="seg" id="bgTools">
+        <button data-bgtool="wand" class="active" title="Click a colour area">Magic wand</button>
+        <button data-bgtool="lasso" title="Draw a freehand shape">Lasso</button>
+        <button data-bgtool="polygon" title="Click points, double-click to close">Polygon</button>
+        <button data-bgtool="smart" title="Edge-aware one-click selection">Smart select</button>
+      </div>
+      <label class="tol">Tolerance
+        <input type="range" id="bgTolerance" min="0" max="100" value="30" />
+        <span id="bgTolVal">30</span>
+      </label>
+      <button class="btn tiny" id="bgAuto" title="Find and select the background automatically"><svg class="ico"><use href="#i-sparkles"/></svg> Auto remove</button>
+      <button class="btn tiny" id="bgInvert">Invert</button>
+      <button class="btn tiny" id="bgClear">Clear</button>
+      <button class="btn tiny" id="bgUndo">Undo</button>
+    </div>
+
+    <div class="bg-canvas-wrap" id="bgCanvasWrap">
+      <canvas id="bgEditCanvas"></canvas>
+      <canvas id="bgMaskCanvas"></canvas>
+    </div>
+    <p class="hint" id="bgStatus">Click the colour you want to remove, then press “Make selected transparent”.</p>
+
+    <div class="modal-actions">
+      <button class="btn primary" id="bgTransparent">Make selected transparent</button>
+      <button class="btn" id="bgApplyPage">Apply to page</button>
+      <button class="btn" id="bgReplaceImage">Replace image layer</button>
+      <button class="btn" id="bgDownloadPng"><svg class="ico"><use href="#i-download"/></svg> Transparent PNG</button>
+      <button class="btn" id="bgDone">Done</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== SIGNATURE ===================== -->
+<div class="modal" id="sigModal" aria-hidden="true">
+  <div class="modal-card">
+    <header class="modal-head">
+      <h2>Signature</h2>
+      <button class="modal-x" id="sigClose" title="Close">×</button>
+    </header>
+
+    <div class="seg wide tabs" id="sigTabs">
+      <button data-sigtab="draw" class="active">Draw</button>
+      <button data-sigtab="type">Type</button>
+      <button data-sigtab="upload">Upload PNG</button>
+    </div>
+
+    <div data-sigpane="draw">
+      <canvas id="sigDrawCanvas" width="620" height="220"></canvas>
+      <div class="row" style="margin-top:8px">
+        <button class="btn tiny" id="sigClearDraw">Clear drawing</button>
+      </div>
+    </div>
+
+    <div data-sigpane="type" hidden>
+      <div class="row two">
+        <div>
+          <label class="lbl">Name</label>
+          <input type="text" id="sigText" value="Your Name" />
+        </div>
+        <div>
+          <label class="lbl">Style</label>
+          <select id="sigFont">
+            <option value="'Dancing Script', cursive">Dancing Script</option>
+            <option value="'Great Vibes', cursive">Great Vibes</option>
+            <option value="'Caveat', cursive">Caveat</option>
+            <option value="'Segoe Script', cursive">Segoe Script</option>
+            <option value="'Brush Script MT', cursive">Brush Script</option>
+          </select>
+        </div>
+      </div>
+      <div class="sig-preview" id="sigPreview">Your Name</div>
+    </div>
+
+    <div data-sigpane="upload" hidden>
+      <button class="btn" id="sigUploadBtn">Choose a PNG / image…</button>
+      <input type="file" id="sigUpload" accept="image/*" hidden />
+      <p class="hint">A transparent PNG works best.</p>
+    </div>
+
+    <div class="row two" style="margin-top:10px">
+      <input type="text" id="sigName" placeholder="Signature name (optional)" />
+      <button class="btn tiny" id="sigSave"><svg class="ico"><use href="#i-save"/></svg> Save for reuse</button>
+    </div>
+    <div class="sig-gallery" id="sigGallery"></div>
+
+    <div class="modal-actions">
+      <button class="btn primary" id="sigInsert">Insert on page</button>
+      <button class="btn" id="sigClose2">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== TABLE INSERT ===================== -->
+<div class="modal" id="tableModal" aria-hidden="true">
+  <div class="modal-card">
+    <header class="modal-head">
+      <h2>Insert table</h2>
+      <button class="modal-x" id="tblClose" title="Close">×</button>
+    </header>
+
+    <div class="row two">
+      <div>
+        <label class="lbl">Rows</label>
+        <input type="number" id="tblRows" value="3" min="1" max="40" />
+      </div>
+      <div>
+        <label class="lbl">Columns</label>
+        <input type="number" id="tblCols" value="3" min="1" max="20" />
+      </div>
+    </div>
+    <div class="row">
+      <label class="lbl">Cell placeholder text</label>
+      <input type="text" id="tblDefault" value="Cell" />
+    </div>
+    <div class="row two">
+      <div>
+        <label class="lbl">Header fill</label>
+        <input type="color" id="tblHeaderFill" value="#e8eefb" />
+      </div>
+      <div>
+        <label class="lbl">Body fill</label>
+        <input type="color" id="tblFill" value="#ffffff" />
+      </div>
+    </div>
+    <div class="row two">
+      <div>
+        <label class="lbl">Border colour</label>
+        <input type="color" id="tblBorder" value="#94a3b8" />
+      </div>
+      <div>
+        <label class="lbl">Border width</label>
+        <input type="number" id="tblBorderWidth" value="1" min="0" max="8" step="0.5" />
+      </div>
+    </div>
+    <div class="row two">
+      <div>
+        <label class="lbl">Font size (pt)</label>
+        <input type="number" id="tblFontSize" value="12" min="4" max="72" />
+      </div>
+      <div>
+        <label class="lbl">Header</label>
+        <label class="check"><input type="checkbox" id="tblHeaderBold" checked /> Bold first row</label>
+      </div>
+    </div>
+    <div class="row">
+      <label class="check"><input type="checkbox" id="tblNewPage" /> Insert on a new page</label>
+    </div>
+    <div class="size-box" data-size-root="table" hidden>
+      <div class="row two">
+        <div>
+          <label class="lbl">Page size</label>
+          <select data-size="preset">
+            <option value="a4">A4</option>
+            <option value="a3">A3</option>
+            <option value="letter">Letter</option>
+            <option value="legal">Legal</option>
+            <option value="custom">Custom</option>
+          </select>
+        </div>
+        <div>
+          <label class="lbl">Units</label>
+          <select data-size="unit">
+            <option value="mm">mm</option><option value="cm">cm</option><option value="in">inch</option><option value="px">px</option><option value="pt">pt</option>
+          </select>
+        </div>
+      </div>
+      <div class="row two">
+        <div><label class="lbl">Width</label><input type="number" data-size="w" value="210" min="10" /></div>
+        <div><label class="lbl">Height</label><input type="number" data-size="h" value="297" min="10" /></div>
+      </div>
+      <div class="row two">
+        <div>
+          <label class="lbl">Orientation</label>
+          <select data-size="orient"><option value="portrait">Portrait</option><option value="landscape">Landscape</option></select>
+        </div>
+        <div><label class="lbl">&nbsp;</label><label class="check"><input type="checkbox" data-size="lock" checked /> Lock ratio</label></div>
+      </div>
+      <p class="hint" data-size="info"></p>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn primary" id="tblInsert">Insert table</button>
+      <button class="btn" id="tblClose2">Close</button>
+    </div>
+  </div>
+</div>
+
+
+<div class="toast" id="toast"></div>
+
+<div class="progress" id="progress">
+  <div class="progress-card">
+    <div class="spinner"></div>
+    <span id="progressText">Working…</span>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/fabric@5.3.0/dist/fabric.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="editor.js"></script>
+</body>
+</html>

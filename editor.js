@@ -83,6 +83,7 @@
     rotateHintShown: false,
     pageSel: new Set(),
     pageDrag: null,
+    tableMeta: new Map(), // tableId -> table model
   };
 
   const DPR = () => Math.min(2, window.devicePixelRatio || 1);
@@ -119,6 +120,8 @@
     backgroundColor: null,
     preserveObjectStacking: true,
     selection: true,
+    enableRetinaScaling: true,
+    imageSmoothingEnabled: true,
   });
 
   fabric.Object.prototype.set({
@@ -541,10 +544,13 @@
   }
 
   function guessFontKey(family) {
-    const f = String(family || "").toLowerCase();
-    if (/mono|courier|consol|menlo|typewriter|code/.test(f)) return "courier";
-    if (/sans|arial|helvetica|calibri|verdana|tahoma|segoe|futura|myriad|roboto|lato|noto/.test(f)) return "helvetica";
-    if (/serif|times|roman|georgia|cambria|garamond|palatino|book|minion|baskerville|didot|bodoni/.test(f)) return "times";
+    const f = String(family || "").toLowerCase().replace(/[^a-z0-9]+/g, " ");
+    if (/courier|mono|consol|fixed|menlo|monaco|inconsolata|source code|typewriter/.test(f)) return "courier";
+    if (/times|serif|roman|georgia|cambria|garamond|palatino|book antiqua|minion|baskerville|bodoni|century|caslon/.test(f)) return "times";
+    if (/helvetica|arial|sans|calibri|verdana|tahoma|segoe|futura|myriad|avenir|roboto|lato|noto|open sans|inter|ui sans|system/.test(f)) return "helvetica";
+    if (f.includes("helvetica")) return "helvetica";
+    if (f.includes("times")) return "times";
+    if (f.includes("courier")) return "courier";
     return "helvetica";
   }
 
@@ -937,17 +943,90 @@
   canvas.on("mouse:down", (opt) => {
     const down = opt.target;
     tableClick = null;
-    if (down && down.insertedTable && down.type !== "activeSelection" && !down.group) {
-      down._tablePos = { left: down.left || 0, top: down.top || 0 };
-      tableClick = {
-        obj: down,
-        x: opt.e ? opt.e.clientX : 0,
-        y: opt.e ? opt.e.clientY : 0,
-      };
+    if (screenshotMode) {
+      const p = canvas.getPointer(opt.e);
+      screenshotStart = { x: p.x, y: p.y };
+      if (screenshotRect) { try { canvas.remove(screenshotRect); } catch (e) {} }
+      screenshotRect = new fabric.Rect({ left: p.x, top: p.y, width: 0, height: 0, fill: "rgba(37,99,235,0.06)", stroke: "#2563eb", strokeWidth: 1, strokeDashArray: [2,2], selectable: false, evented: false, excludeFromExport: true });
+      canvas.add(screenshotRect);
+      canvas.bringToFront(screenshotRect);
+      canvas.renderAll();
+      return;
+    }
+    if (down && down.insertedTable) {
+      if (down.isTableHeader) {
+        if (down.headerType === "row" && down.cellRow != null && down.cellRow >= 0) {
+          selectTableRow(down.insertedTable, down.cellRow);
+          return;
+        }
+        if (down.headerType === "col" && down.cellCol != null && down.cellCol >= 0) {
+          selectTableCol(down.insertedTable, down.cellCol);
+          return;
+        }
+        if (down.headerType === "corner") {
+          selectTableAll(down.insertedTable);
+          return;
+        }
+      }
+      if (down.type !== "activeSelection" && !down.group) {
+        down._tablePos = { left: down.left || 0, top: down.top || 0 };
+        tableClick = {
+          obj: down,
+          x: opt.e ? opt.e.clientX : 0,
+          y: opt.e ? opt.e.clientY : 0,
+        };
+      }
     }
     for (const t of objectListOf(opt.target)) {
       if (t.patchUid) t._patchPos = { left: t.left || 0, top: t.top || 0 };
     }
+  });
+
+  canvas.on("mouse:move", (opt) => {
+    if (screenshotMode && screenshotStart && screenshotRect) {
+      const p = canvas.getPointer(opt.e);
+      const left = Math.min(screenshotStart.x, p.x);
+      const top = Math.min(screenshotStart.y, p.y);
+      const w = Math.abs(p.x - screenshotStart.x);
+      const h = Math.abs(p.y - screenshotStart.y);
+      screenshotRect.set({ left, top, width: w, height: h });
+      screenshotRect.setCoords();
+      canvas.requestRenderAll();
+    }
+  });
+
+  canvas.on("mouse:up", async (opt) => {
+    if (screenshotMode && screenshotStart && screenshotRect) {
+      const p = canvas.getPointer(opt.e);
+      const left = Math.min(screenshotStart.x, p.x);
+      const top = Math.min(screenshotStart.y, p.y);
+      const w = Math.abs(p.x - screenshotStart.x);
+      const h = Math.abs(p.y - screenshotStart.y);
+      if (w > 1 && h > 1) {
+        await captureScreenshotArea(left, top, w, h);
+        return;
+      } else {
+        try { canvas.remove(screenshotRect); } catch (e) {}
+        screenshotRect = null;
+        screenshotStart = null;
+        screenshotMode = false;
+        document.querySelectorAll(".tool[data-action]").forEach((b) => b.classList.toggle("active", false));
+        setTool("select");
+        canvas.requestRenderAll();
+        toast("Drag exactly on area to capture");
+        return;
+      }
+    }
+    const click = tableClick;
+    tableClick = null;
+    if (!click || tableEditing) return;
+    const moved = opt.e
+      ? Math.hypot(opt.e.clientX - click.x, opt.e.clientY - click.y)
+      : 0;
+    if (moved > 3) return;
+    if (canvas.getActiveObject() !== click.obj) return;
+    if (click.obj.isTableHeader) return;
+    selectInsertedTable(click.obj);
   });
   canvas.on("object:moving", (opt) => {
     syncTableMove(opt.target);
@@ -991,6 +1070,7 @@
       : 0;
     if (moved > 3) return;
     if (canvas.getActiveObject() !== click.obj) return;
+    if (click.obj.isTableHeader) return;
     selectInsertedTable(click.obj);
   });
   /* Do NOT build an ActiveSelection here: selection:created fires in the
@@ -1053,12 +1133,16 @@
   function applyViewport() {
     const p = S.pages[S.index];
     if (!p) return;
+    const dpr = DPR();
     const w = Math.max(1, Math.round(p.width * S.zoom));
     const h = Math.max(1, Math.round(p.height * S.zoom));
     el.pageWrap.style.width = w + "px";
     el.pageWrap.style.height = h + "px";
-    canvas.setDimensions({ width: w, height: h });
-    canvas.setZoom(S.zoom);
+    // Use device pixel ratio for crisp text rendering on high-DPI screens
+    canvas.setDimensions({ width: w, height: h }, { backstoreOnly: false });
+    if (typeof canvas.setZoom === "function") {
+      canvas.setZoom(S.zoom);
+    }
     canvas.calcOffset();
     canvas.requestRenderAll();
     el.zoomLabel.textContent = Math.round(S.zoom * 100) + "%";
@@ -2273,8 +2357,8 @@
       source = cells.length > 1 && target.cell ? target.cell : line;
     }
     const fs = Math.max(1, line.fontSize);
-    const padX = Math.max(0.6, fs * 0.09);
-    const padY = Math.max(0.6, fs * 0.1);
+    const padX = Math.max(0.4, fs * 0.04);
+    const padY = Math.max(0.4, fs * 0.06);
     const box = {
       left: source.left - padX,
       top: line.top - padY,
@@ -2321,13 +2405,13 @@
     }
 
     const text = new fabric.IText(source.text || line.text, {
-      left: dispBox.left,
-      top: dispBox.top,
+      left: dispBox.left + padX * 0.25,
+      top: dispBox.top + padY * 0.25,
       angle: dispBox.angle || 0,
       fontSize: fs,
       fontFamily: FONTS[key].css,
       fill: colors.fg,
-      lineHeight: 1.1,
+      lineHeight: 1.0,
       editable: true,
     });
     text.pdfFont = key;
@@ -2410,6 +2494,23 @@
           q.cellCol === o.cellCol
       ) || null
     );
+  }
+
+  function getTableMeta(id) {
+    if (!id) return null;
+    return S.tableMeta.get(id) || null;
+  }
+
+  function ensureTableMeta(id, data) {
+    if (!id) return null;
+    let meta = S.tableMeta.get(id);
+    if (!meta) {
+      meta = Object.assign({}, data || {});
+      S.tableMeta.set(id, meta);
+    } else if (data) {
+      Object.assign(meta, data);
+    }
+    return meta;
   }
 
   function editTableCell(o) {
@@ -2537,6 +2638,407 @@
     syncProps();
     pushHistory();
     return true;
+  }
+
+  let tableResize = null;
+
+  function getTableCellObjs(tableId) {
+    return canvas.getObjects().filter((o) => o.insertedTable === tableId);
+  }
+
+  function rebuildTableLayout(tableId) {
+    const meta = getTableMeta(tableId);
+    if (!meta) return;
+    const objs = getTableCellObjs(tableId);
+    if (!objs.length) return;
+    if (!meta.colWidths || meta.colWidths.length !== meta.cols) {
+      meta.colWidths = Array(meta.cols).fill(meta.cellW || 100);
+    }
+    if (!meta.rowHeights || meta.rowHeights.length !== meta.rows) {
+      meta.rowHeights = Array(meta.rows).fill(meta.cellH || 30);
+    }
+    const headerW = meta.headerW != null ? meta.headerW : Math.max(24, (meta.fontSize || 12) * 2);
+    const headerH = meta.headerH != null ? meta.headerH : Math.max(22, (meta.fontSize || 12) * 1.8);
+    meta.headerW = headerW;
+    meta.headerH = headerH;
+    let baseLeft = meta.left != null ? meta.left - (meta.hasRowHeader ? headerW : 0) : Infinity;
+    let baseTop = meta.top != null ? meta.top - (meta.hasColHeader ? headerH : 0) : Infinity;
+    objs.forEach((o) => {
+      if (typeof o.left === "number" && (o.headerType === "row" || o.cellCol === -1)) baseLeft = Math.min(baseLeft, o.left);
+      if (typeof o.top === "number" && (o.headerType === "col" || o.cellRow === -1)) baseTop = Math.min(baseTop, o.top);
+      if (o.isTableHeader && o.headerType === "corner") {
+        baseLeft = Math.min(baseLeft, o.left);
+        baseTop = Math.min(baseTop, o.top);
+      }
+    });
+    if (!isFinite(baseLeft)) baseLeft = 0;
+    if (!isFinite(baseTop)) baseTop = 0;
+    const left = baseLeft;
+    const top = baseTop;
+    const offsetX = meta.hasRowHeader !== false ? headerW : 0;
+    const offsetY = meta.hasColHeader !== false ? headerH : 0;
+    meta.left = left + offsetX;
+    meta.top = top + offsetY;
+
+    // Headers
+    if (meta.hasColHeader !== false) {
+      for (let c = 0; c < meta.cols; c++) {
+        let cx = left + offsetX;
+        for (let cc = 0; cc < c; cc++) cx += meta.colWidths[cc];
+        const rect = objs.find((o) => o.isTableHeader && o.headerType === "col" && o.cellCol === c);
+        const txt = objs.find((o) => o.isTableHeader && o.headerType === "col" && o.cellCol === c && isText(o));
+        if (rect) {
+          rect.set({ left: cx, top: top, width: meta.colWidths[c], height: headerH });
+          rect.setCoords();
+        }
+        if (txt) {
+          txt.set({ left: cx + 4, top: top + 2, width: Math.max(10, meta.colWidths[c] - 8), textAlign: "center" });
+          txt.setCoords();
+        }
+      }
+      const corner = objs.find((o) => o.isTableHeader && o.headerType === "corner");
+      if (corner) {
+        corner.set({ left: left, top: top, width: headerW, height: headerH });
+        corner.setCoords();
+      }
+    }
+    if (meta.hasRowHeader !== false) {
+      for (let r = 0; r < meta.rows; r++) {
+        let cy = meta.top;
+        for (let rr = 0; rr < r; rr++) cy += meta.rowHeights[rr];
+        const rect = objs.find((o) => o.isTableHeader && o.headerType === "row" && o.cellRow === r);
+        const txt = objs.find((o) => o.isTableHeader && o.headerType === "row" && o.cellRow === r && isText(o));
+        if (rect) {
+          rect.set({ left: left, top: cy, width: headerW, height: meta.rowHeights[r] });
+          rect.setCoords();
+        }
+        if (txt) {
+          txt.set({ left: left + 2, top: cy + 2, width: Math.max(10, headerW - 4), textAlign: "center" });
+          txt.setCoords();
+        }
+      }
+    }
+
+    let cx = meta.left;
+    for (let c = 0; c < meta.cols; c++) {
+      const cw = meta.colWidths[c] || meta.cellW || 100;
+      let cy = meta.top;
+      for (let r = 0; r < meta.rows; r++) {
+        const rh = meta.rowHeights[r] || meta.cellH || 30;
+        const rect = objs.find((o) => o.isTableGrid && !o.isTableHeader && o.cellRow === r && o.cellCol === c);
+        const txt = objs.find((o) => isText(o) && !o.isTableHeader && o.cellRow === r && o.cellCol === c);
+        if (rect) {
+          rect.set({ left: cx, top: cy, width: cw, height: rh });
+          rect.setCoords();
+        }
+        if (txt) {
+          const tw = Math.max(10, cw - Math.max(8, cw * 0.08));
+          txt.set({
+            left: cx + Math.max(4, cw * 0.04),
+            top: cy + Math.max(2, rh * 0.08),
+            width: tw,
+          });
+          if (txt.type === "textbox") {
+            txt.set({ width: tw });
+          }
+          txt.setCoords();
+        }
+        cy += rh;
+      }
+      cx += cw;
+    }
+    canvas.requestRenderAll();
+    syncLayers();
+  }
+
+  function addTableRow(tableId, afterIdx) {
+    const meta = getTableMeta(tableId);
+    if (!meta) return toast("No table selected");
+    const rows = meta.rows || 0;
+    const cols = meta.cols || 0;
+    const r = afterIdx == null || afterIdx < 0 ? rows : clamp(afterIdx + 1, 0, rows);
+    if (!meta.rowHeights || meta.rowHeights.length !== rows) {
+      meta.rowHeights = Array(rows).fill(meta.cellH || 30);
+    }
+    meta.rowHeights.splice(r, 0, meta.cellH || 30);
+    meta.rows = rows + 1;
+    const objs = getTableCellObjs(tableId);
+    objs.forEach((o) => {
+      if (o.isTableHeader && o.headerType === "row" && o.cellRow >= r) o.cellRow++;
+    });
+    objs.forEach((o) => {
+      if (!o.isTableHeader && o.cellRow >= r) o.cellRow++;
+    });
+    const border = meta.border || "#94a3b8";
+    const borderW = meta.borderW || 1;
+    const bodyFill = meta.bodyFill || "#ffffff";
+    const fs = meta.fontSize || 12;
+    const headerH = meta.headerH || Math.max(22, fs * 1.8);
+    const headerW = meta.headerW || Math.max(24, fs * 2);
+    let cy = meta.top || 0;
+    for (let rr = 0; rr < r; rr++) cy += meta.rowHeights[rr] || meta.cellH || 30;
+    // row header
+    if (meta.hasRowHeader !== false) {
+      const rh = meta.rowHeights[r] || meta.cellH || 30;
+      const rectH = new fabric.Rect({
+        left: (meta.left || 0) - headerW,
+        top: cy,
+        width: headerW,
+        height: rh,
+        fill: meta.headerFill || "#e8eefb",
+        stroke: borderW > 0 ? border : null,
+        strokeWidth: borderW,
+        strokeUniform: true,
+        selectable: true,
+        hoverCursor: "pointer",
+      });
+      rectH.isTableGrid = true;
+      rectH.insertedTable = tableId;
+      rectH.tableId = tableId;
+      rectH.isTableHeader = true;
+      rectH.headerType = "row";
+      rectH.cellRow = r;
+      rectH.cellCol = -1;
+      canvas.add(rectH);
+      const txtH = new fabric.Textbox(String(r + 1), {
+        left: (meta.left || 0) - headerW + 2,
+        top: cy + 2,
+        width: Math.max(10, headerW - 4),
+        fontSize: fs - 1,
+        fontFamily: FONTS.helvetica.css,
+        fill: contrastOn(meta.headerFill || "#e8eefb"),
+        lineHeight: 1.1,
+        editable: false,
+        textAlign: "center",
+        splitByGrapheme: true,
+        wordWrap: true,
+      });
+      txtH.insertedTable = tableId;
+      txtH.tableId = tableId;
+      txtH.isTableHeader = true;
+      txtH.headerType = "row";
+      txtH.cellRow = r;
+      txtH.cellCol = -1;
+      if (meta.headerBold) txtH.set("fontWeight", "bold");
+      canvas.add(txtH);
+    }
+    for (let c = 0; c < cols; c++) {
+      let cx = meta.left || 0;
+      for (let cc = 0; cc < c; cc++) cx += (meta.colWidths && meta.colWidths[cc]) || meta.cellW || 100;
+      const cw = (meta.colWidths && meta.colWidths[c]) || meta.cellW || 100;
+      const rh = meta.rowHeights[r] || meta.cellH || 30;
+      const rect = new fabric.Rect({
+        left: cx,
+        top: cy,
+        width: cw,
+        height: rh,
+        fill: bodyFill,
+        stroke: borderW > 0 ? border : null,
+        strokeWidth: borderW,
+        strokeUniform: true,
+        selectable: true,
+        hoverCursor: "move",
+      });
+      rect.isTableGrid = true;
+      rect.insertedTable = tableId;
+      rect.tableId = tableId;
+      rect.cellRow = r;
+      rect.cellCol = c;
+      canvas.add(rect);
+      const txt = new fabric.Textbox("", {
+        left: cx + Math.max(4, cw * 0.04),
+        top: cy + Math.max(2, rh * 0.08),
+        width: Math.max(10, cw - Math.max(8, cw * 0.08)),
+        fontSize: fs,
+        fontFamily: FONTS.helvetica.css,
+        fill: "#111827",
+        lineHeight: 1.15,
+        editable: true,
+        splitByGrapheme: true,
+        wordWrap: true,
+      });
+      txt.pdfFont = "helvetica";
+      txt.insertedTable = tableId;
+      txt.tableId = tableId;
+      txt.cellRow = r;
+      txt.cellCol = c;
+      canvas.add(txt);
+    }
+    rebuildTableLayout(tableId);
+    pushHistory();
+    toast("Row added");
+  }
+
+  function addTableCol(tableId, afterIdx) {
+    const meta = getTableMeta(tableId);
+    if (!meta) return toast("No table selected");
+    const rows = meta.rows || 0;
+    const cols = meta.cols || 0;
+    const c = afterIdx == null || afterIdx < 0 ? cols : clamp(afterIdx + 1, 0, cols);
+    if (!meta.colWidths || meta.colWidths.length !== cols) {
+      meta.colWidths = Array(cols).fill(meta.cellW || 100);
+    }
+    meta.colWidths.splice(c, 0, meta.cellW || 100);
+    meta.cols = cols + 1;
+    if (!meta.rowHeights || meta.rowHeights.length !== rows) {
+      meta.rowHeights = Array(rows).fill(meta.cellH || 30);
+    }
+    const objs = getTableCellObjs(tableId);
+    objs.forEach((o) => {
+      if (o.isTableHeader && o.headerType === "col" && o.cellCol >= c) o.cellCol++;
+    });
+    objs.forEach((o) => {
+      if (!o.isTableHeader && o.cellCol >= c) o.cellCol++;
+    });
+    const border = meta.border || "#94a3b8";
+    const borderW = meta.borderW || 1;
+    const bodyFill = meta.bodyFill || "#ffffff";
+    const fs = meta.fontSize || 12;
+    const headerH = meta.headerH || Math.max(22, fs * 1.8);
+    let cx = meta.left || 0;
+    for (let cc = 0; cc < c; cc++) cx += meta.colWidths[cc] || meta.cellW || 100;
+    // column header
+    if (meta.hasColHeader !== false) {
+      const cw = meta.colWidths[c] || meta.cellW || 100;
+      const rectH = new fabric.Rect({
+        left: cx,
+        top: (meta.top || 0) - headerH,
+        width: cw,
+        height: headerH,
+        fill: meta.headerFill || "#e8eefb",
+        stroke: borderW > 0 ? border : null,
+        strokeWidth: borderW,
+        strokeUniform: true,
+        selectable: true,
+        hoverCursor: "pointer",
+      });
+      rectH.isTableGrid = true;
+      rectH.insertedTable = tableId;
+      rectH.tableId = tableId;
+      rectH.isTableHeader = true;
+      rectH.headerType = "col";
+      rectH.cellRow = -1;
+      rectH.cellCol = c;
+      canvas.add(rectH);
+      const label = String.fromCharCode(65 + (c % 26)) + (c >= 26 ? String.fromCharCode(65 + Math.floor(c/26)-1) : "");
+      const txtH = new fabric.Textbox(label, {
+        left: cx + 4,
+        top: (meta.top || 0) - headerH + 2,
+        width: Math.max(10, cw - 8),
+        fontSize: fs - 1,
+        fontFamily: FONTS.helvetica.css,
+        fill: contrastOn(meta.headerFill || "#e8eefb"),
+        lineHeight: 1.1,
+        editable: false,
+        textAlign: "center",
+        splitByGrapheme: true,
+        wordWrap: true,
+      });
+      txtH.insertedTable = tableId;
+      txtH.tableId = tableId;
+      txtH.isTableHeader = true;
+      txtH.headerType = "col";
+      txtH.cellRow = -1;
+      txtH.cellCol = c;
+      if (meta.headerBold) txtH.set("fontWeight", "bold");
+      canvas.add(txtH);
+    }
+    for (let r = 0; r < rows; r++) {
+      let cy = meta.top || 0;
+      for (let rr = 0; rr < r; rr++) cy += meta.rowHeights[rr] || meta.cellH || 30;
+      const cw = meta.colWidths[c] || meta.cellW || 100;
+      const rh = meta.rowHeights[r] || meta.cellH || 30;
+      const rect = new fabric.Rect({
+        left: cx,
+        top: cy,
+        width: cw,
+        height: rh,
+        fill: r === 0 ? (meta.headerFill || "#e8eefb") : bodyFill,
+        stroke: borderW > 0 ? border : null,
+        strokeWidth: borderW,
+        strokeUniform: true,
+        selectable: true,
+        hoverCursor: "move",
+      });
+      rect.isTableGrid = true;
+      rect.insertedTable = tableId;
+      rect.tableId = tableId;
+      rect.cellRow = r;
+      rect.cellCol = c;
+      canvas.add(rect);
+      const txt = new fabric.Textbox("", {
+        left: cx + Math.max(4, cw * 0.04),
+        top: cy + Math.max(2, rh * 0.08),
+        width: Math.max(10, cw - Math.max(8, cw * 0.08)),
+        fontSize: fs,
+        fontFamily: FONTS.helvetica.css,
+        fill: r === 0 ? contrastOn(meta.headerFill || "#e8eefb") : "#111827",
+        lineHeight: 1.15,
+        editable: true,
+        splitByGrapheme: true,
+        wordWrap: true,
+      });
+      txt.pdfFont = "helvetica";
+      txt.insertedTable = tableId;
+      txt.tableId = tableId;
+      txt.cellRow = r;
+      txt.cellCol = c;
+      if (r === 0 && meta.headerBold) txt.set("fontWeight", "bold");
+      canvas.add(txt);
+    }
+    rebuildTableLayout(tableId);
+    pushHistory();
+    toast("Column added");
+  }
+
+  function delTableRow(tableId, idx) {
+    const meta = getTableMeta(tableId);
+    if (!meta) return toast("No table selected");
+    if ((meta.rows || 0) <= 1) return toast("Cannot delete last row");
+    const rows = meta.rows || 0;
+    const r = idx == null || idx < 0 ? rows - 1 : clamp(idx, 0, rows - 1);
+    if (!meta.rowHeights || meta.rowHeights.length !== rows) {
+      meta.rowHeights = Array(rows).fill(meta.cellH || 30);
+    }
+    meta.rowHeights.splice(r, 1);
+    meta.rows = rows - 1;
+    const toRemove = getTableCellObjs(tableId).filter((o) => !o.isTableHeader && o.cellRow === r);
+    toRemove.forEach((o) => canvas.remove(o));
+    getTableCellObjs(tableId).filter((o) => o.isTableHeader && o.headerType === "row" && o.cellRow === r).forEach((o) => canvas.remove(o));
+    getTableCellObjs(tableId).forEach((o) => {
+      if (o.isTableHeader && o.headerType === "row" && o.cellRow > r) o.cellRow--;
+    });
+    getTableCellObjs(tableId).forEach((o) => {
+      if (!o.isTableHeader && o.cellRow > r) o.cellRow--;
+    });
+    rebuildTableLayout(tableId);
+    pushHistory();
+    toast("Row deleted");
+  }
+
+  function delTableCol(tableId, idx) {
+    const meta = getTableMeta(tableId);
+    if (!meta) return toast("No table selected");
+    if ((meta.cols || 0) <= 1) return toast("Cannot delete last column");
+    const cols = meta.cols || 0;
+    const c = idx == null || idx < 0 ? cols - 1 : clamp(idx, 0, cols - 1);
+    if (!meta.colWidths || meta.colWidths.length !== cols) {
+      meta.colWidths = Array(cols).fill(meta.cellW || 100);
+    }
+    meta.colWidths.splice(c, 1);
+    meta.cols = cols - 1;
+    const toRemove = getTableCellObjs(tableId).filter((o) => !o.isTableHeader && o.cellCol === c);
+    toRemove.forEach((o) => canvas.remove(o));
+    getTableCellObjs(tableId).filter((o) => o.isTableHeader && o.headerType === "col" && o.cellCol === c).forEach((o) => canvas.remove(o));
+    getTableCellObjs(tableId).forEach((o) => {
+      if (o.isTableHeader && o.headerType === "col" && o.cellCol > c) o.cellCol--;
+    });
+    getTableCellObjs(tableId).forEach((o) => {
+      if (!o.isTableHeader && o.cellCol > c) o.cellCol--;
+    });
+    rebuildTableLayout(tableId);
+    pushHistory();
+    toast("Column deleted");
   }
 
   /* Turn a replaced text back into fully transparent text by deleting the
@@ -3014,10 +3516,26 @@
      ====================================================================== */
   const DRAW_TOOLS = new Set(["rect", "ellipse", "line", "patch", "highlight"]);
   let rotateGesture = null;
+  let screenshotMode = false;
+  let screenshotStart = null;
+  let screenshotRect = null;
 
   function setTool(tool) {
     S.tool = tool;
+    screenshotMode = false;
+    screenshotStart = null;
+    if (screenshotRect) {
+      try { canvas.remove(screenshotRect); } catch (e) {}
+      screenshotRect = null;
+    }
+    if (canvas.lowerCanvasEl) {
+      try { canvas.lowerCanvasEl.style.cursor = ""; } catch (e) {}
+    }
+    if (canvas.upperCanvasEl) {
+      try { canvas.upperCanvasEl.style.cursor = ""; } catch (e) {}
+    }
     document.querySelectorAll(".tool[data-tool]").forEach((b) => b.classList.toggle("active", b.dataset.tool === tool));
+    document.querySelectorAll(".tool[data-action]").forEach((b) => b.classList.toggle("active", false));
     const selectLike = tool === "select" || tool === "rotate";
     canvas.isDrawingMode = tool === "pen";
     canvas.selection = tool === "select";
@@ -3025,6 +3543,7 @@
     canvas.hoverCursor = tool === "rotate" ? "grab" : tool === "select" ? "move" : "crosshair";
     canvas.moveCursor = tool === "rotate" ? "grabbing" : "move";
     canvas.getObjects().forEach((o) => {
+      if (o.isTableHeader) { o.selectable = false; o.evented = true; return; }
       o.selectable = selectLike;
       o.evented = selectLike;
     });
@@ -3068,6 +3587,74 @@
       return new fabric.Line([p.x, p.y, p.x, p.y], { stroke, strokeWidth: Math.max(sw, 1), fill: null, opacity: op });
     }
     return null;
+  }
+
+  async function captureScreenshotArea(lx, ty, w, h) {
+    if (!S.ready) return;
+    const p = S.pages[S.index];
+    if (!p) return;
+    const left2 = Math.max(0, Math.floor(Math.min(lx, lx + w)));
+    const top2 = Math.max(0, Math.floor(Math.min(ty, ty + h)));
+    const rw = Math.max(1, Math.abs(w));
+    const rh = Math.max(1, Math.abs(h));
+    const w2 = Math.max(1, Math.min(p.width - left2, rw));
+    const h2 = Math.max(1, Math.min(p.height - top2, rh));
+    const bgScale = S.bgScale || 1;
+    const fCanvas = canvas.lowerCanvasEl;
+    const fScale = fCanvas && fCanvas.width ? fCanvas.width / p.width : bgScale;
+    const scale = Math.max(bgScale, fScale, Math.ceil((window.devicePixelRatio || 1) * 3), 6);
+    if (screenshotRect) {
+      try { canvas.remove(screenshotRect); } catch (e) {}
+      screenshotRect = null;
+    }
+    try {
+      canvas.discardActiveObject();
+      canvas.selection = false;
+      canvas.skipTargetFind = true;
+      canvas.renderAll();
+    } catch (e) {}
+    const out = document.createElement("canvas");
+    out.width = Math.max(1, Math.round(w2 * scale));
+    out.height = Math.max(1, Math.round(h2 * scale));
+    const ctx = out.getContext("2d");
+    ctx.imageSmoothingEnabled = false;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, out.width, out.height);
+    if (el.bgCanvas && el.bgCanvas.width) {
+      ctx.drawImage(el.bgCanvas, left2 * bgScale, top2 * bgScale, w2 * bgScale, h2 * bgScale, 0, 0, out.width, out.height);
+    }
+    if (fCanvas && fCanvas.width) {
+      ctx.drawImage(fCanvas, left2 * fScale, top2 * fScale, w2 * fScale, h2 * fScale, 0, 0, out.width, out.height);
+    }
+    try {
+      canvas.skipTargetFind = false;
+      canvas.selection = true;
+    } catch (e) {}
+    const dataUrl = out.toDataURL("image/png");
+    fabric.Image.fromURL(dataUrl, (img) => {
+      img.set({
+        left: left2,
+        top: top2,
+        originX: "left",
+        originY: "top",
+        scaleX: 1 / scale,
+        scaleY: 1 / scale,
+      });
+      img.uid = "img-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+      screenshotMode = false;
+      screenshotStart = null;
+      if (screenshotRect) { try { canvas.remove(screenshotRect); } catch (e) {} screenshotRect = null; }
+      if (screenshotRect) { try { canvas.remove(screenshotRect); } catch (e) {} screenshotRect = null; }
+      if (screenshotRect) { try { canvas.remove(screenshotRect); } catch (e) {} screenshotRect = null; }
+      document.querySelectorAll(".tool[data-action]").forEach((b) => b.classList.toggle("active", false));
+      canvas.add(img);
+      canvas.setActiveObject(img);
+      canvas.requestRenderAll();
+      pushHistory();
+      syncLayers();
+      setTool("select");
+      toast("Screenshot captured as image layer");
+    }, { crossOrigin: "anonymous" });
   }
 
   function updateShape(obj, a, b, tool) {
@@ -4952,6 +5539,9 @@
     path: null,
     pathClosed: false,
     scale: 1,
+    zoom: 1,
+    minZoom: 0.25,
+    maxZoom: 4,
   };
 
   function bgClearPath() {
@@ -4961,6 +5551,16 @@
 
   function bgMaxDimension() {
     return 1600;
+  }
+
+  function applyBgZoom(z) {
+    const inner = $("bgCanvasInner");
+    const lbl = $("bgZoomLabel");
+    if (!inner) return;
+    const nz = Math.max(BG.minZoom || 0.25, Math.min(BG.maxZoom || 4, typeof z === "number" ? z : BG.zoom || 1));
+    BG.zoom = nz;
+    inner.style.transform = "scale(" + nz + ")";
+    if (lbl) lbl.textContent = Math.round(nz * 100) + "%";
   }
 
   async function openBackgroundTool() {
@@ -5019,6 +5619,11 @@
     $("bgApplyPage").disabled = target.type !== "page";
     setBgTool("wand");
     bgRefresh();
+    BG.zoom = 1;
+    applyBgZoom(1);
+    const wrap = $("bgCanvasWrap");
+    if (wrap) wrap.scrollTop = 0;
+    if (wrap) wrap.scrollLeft = 0;
     $("bgStatus").textContent =
       "Click the colour you want to remove, then press “Make selected transparent”.";
     openModal("bgModal");
@@ -5091,11 +5696,15 @@
   }
 
   function bgPointer(e) {
+    const wrap = $("bgCanvasWrap");
+    const inner = $("bgCanvasInner");
     const edit = $("bgEditCanvas");
-    const r = edit.getBoundingClientRect();
+    if (!wrap || !inner || !edit) return { x: 0, y: 0 };
+    const r = inner.getBoundingClientRect();
+    const z = BG.zoom || 1;
     return {
-      x: clamp(((e.clientX - r.left) * BG.w) / Math.max(1, r.width), 0, BG.w - 1),
-      y: clamp(((e.clientY - r.top) * BG.h) / Math.max(1, r.height), 0, BG.h - 1),
+      x: clamp(((e.clientX - r.left) / z), 0, BG.w - 1),
+      y: clamp(((e.clientY - r.top) / z), 0, BG.h - 1),
     };
   }
 
@@ -5760,71 +6369,228 @@
     const top = Math.max(30, (p.height - totalH) / 2);
     const made = [];
 
-    S.suppressHistory = true;
-    for (let r = 0; r < rows; r++) {
-      for (let c = 0; c < cols; c++) {
-        const x = left + c * cellW;
-        const y = top + r * cellH;
-        const fill = r === 0 ? headerFill : bodyFill;
-        const rect = new fabric.Rect({
-          left: x,
-          top: y,
-          width: cellW,
-          height: cellH,
-          fill,
-          stroke: borderW > 0 ? border : null,
-          strokeWidth: borderW,
-          strokeUniform: true,
-          selectable: true,
-          hoverCursor: "move",
-        });
-        rect.isTableGrid = true;
-        rect.insertedTable = tableId;
-        rect.tableId = tableId;
-        rect.cellRow = r;
-        rect.cellCol = c;
-        canvas.add(rect);
+  const colWidths = Array(cols).fill(cellW);
+  const rowHeights = Array(rows).fill(cellH);
+  const hasRowHeader = true;
+  const hasColHeader = true;
+  const headerW = Math.max(24, fs * 2);
+  const headerH = Math.max(22, fs * 1.8);
 
-        const text = placeholder || "";
-        const it = new fabric.IText(text, {
-          left: x + Math.max(5, cellW * 0.06),
-          top: y + (cellH - fs * 1.18) / 2,
-          fontSize: fs,
-          fontFamily: FONTS.helvetica.css,
-          fill: contrastOn(fill),
-          lineHeight: 1.15,
-          editable: true,
-        });
-        it.pdfFont = "helvetica";
-        it.insertedTable = tableId;
-        it.tableId = tableId;
-        it.cellRow = r;
-        it.cellCol = c;
-        if (r === 0 && headerBold) it.set("fontWeight", "bold");
-        if (placeholder) {
-          /* leave the placeholder selected on the first cell for quick typing */
-          if (r === 0 && c === 0) made.unshift(it);
-          else made.push(it);
-        } else {
-          made.push(it);
-        }
-        canvas.add(it);
-      }
+  ensureTableMeta(tableId, {
+    id: tableId,
+    rows,
+    cols,
+    colWidths: colWidths.slice(),
+    rowHeights: rowHeights.slice(),
+    left,
+    top,
+    cellW,
+    cellH,
+    headerW,
+    headerH,
+    hasRowHeader,
+    hasColHeader,
+    border,
+    borderW,
+    headerFill,
+    bodyFill,
+    fontSize: fs,
+    headerBold,
+  });
+
+  S.suppressHistory = true;
+
+  // Column headers (A, B, C...)
+  if (hasColHeader) {
+    for (let c = 0; c < cols; c++) {
+      let cx = left + headerW;
+      for (let cc = 0; cc < c; cc++) cx += colWidths[cc];
+      const rect = new fabric.Rect({
+        left: cx,
+        top: left >= 0 ? top - headerH : top,
+        width: colWidths[c],
+        height: headerH,
+        fill: headerFill,
+        stroke: borderW > 0 ? border : null,
+        strokeWidth: borderW,
+        strokeUniform: true,
+        selectable: true,
+        hoverCursor: "pointer",
+      });
+      rect.isTableGrid = true;
+      rect.insertedTable = tableId;
+      rect.tableId = tableId;
+      rect.isTableHeader = true;
+      rect.headerType = "col";
+      rect.cellRow = -1;
+      rect.cellCol = c;
+      canvas.add(rect);
+      const label = String.fromCharCode(65 + (c % 26)) + (c >= 26 ? String.fromCharCode(65 + Math.floor(c/26)-1) : "");
+      const it = new fabric.Textbox(label, {
+        left: cx + 4,
+        top: (left >= 0 ? top - headerH : top) + 2,
+        width: Math.max(10, colWidths[c] - 8),
+        fontSize: fs - 1,
+        fontFamily: FONTS.helvetica.css,
+        fill: contrastOn(headerFill),
+        lineHeight: 1.1,
+        editable: false,
+        textAlign: "center",
+        splitByGrapheme: true,
+        wordWrap: true,
+      });
+      it.insertedTable = tableId;
+      it.tableId = tableId;
+      it.isTableHeader = true;
+      it.headerType = "col";
+      it.cellRow = -1;
+      it.cellCol = c;
+      if (headerBold) it.set("fontWeight", "bold");
+      canvas.add(it);
     }
+    // Corner
+    const corner = new fabric.Rect({
+      left: left,
+      top: top - headerH,
+      width: headerW,
+      height: headerH,
+      fill: headerFill,
+      stroke: borderW > 0 ? border : null,
+      strokeWidth: borderW,
+      strokeUniform: true,
+      selectable: true,
+      hoverCursor: "pointer",
+    });
+    corner.isTableGrid = true;
+    corner.insertedTable = tableId;
+    corner.tableId = tableId;
+    corner.isTableHeader = true;
+    corner.headerType = "corner";
+    corner.cellRow = -2;
+    corner.cellCol = -2;
+    canvas.add(corner);
+  }
+
+  // Row headers
+  if (hasRowHeader) {
+    for (let r = 0; r < rows; r++) {
+      let cy = top;
+      for (let rr = 0; rr < r; rr++) cy += rowHeights[rr];
+      const rect = new fabric.Rect({
+        left: left,
+        top: cy,
+        width: headerW,
+        height: rowHeights[r],
+        fill: headerFill,
+        stroke: borderW > 0 ? border : null,
+        strokeWidth: borderW,
+        strokeUniform: true,
+        selectable: true,
+        hoverCursor: "pointer",
+      });
+      rect.isTableGrid = true;
+      rect.insertedTable = tableId;
+      rect.tableId = tableId;
+      rect.isTableHeader = true;
+      rect.headerType = "row";
+      rect.cellRow = r;
+      rect.cellCol = -1;
+      canvas.add(rect);
+      const it = new fabric.Textbox(String(r + 1), {
+        left: left + 2,
+        top: cy + 2,
+        width: Math.max(10, headerW - 4),
+        fontSize: fs - 1,
+        fontFamily: FONTS.helvetica.css,
+        fill: contrastOn(headerFill),
+        lineHeight: 1.1,
+        editable: false,
+        textAlign: "center",
+        splitByGrapheme: true,
+        wordWrap: true,
+      });
+      it.insertedTable = tableId;
+      it.tableId = tableId;
+      it.isTableHeader = true;
+      it.headerType = "row";
+      it.cellRow = r;
+      it.cellCol = -1;
+      if (headerBold) it.set("fontWeight", "bold");
+      canvas.add(it);
+    }
+  }
+
+  const offsetX = hasRowHeader ? headerW : 0;
+  const offsetY = hasColHeader ? headerH : 0;
+  meta.left = left + offsetX;
+  meta.top = top + offsetY;
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      let cx = meta.left;
+      for (let cc = 0; cc < c; cc++) cx += colWidths[cc];
+      let cy = meta.top;
+      for (let rr = 0; rr < r; rr++) cy += rowHeights[rr];
+
+      const fill = r === 0 ? headerFill : bodyFill;
+      const rect = new fabric.Rect({
+        left: cx,
+        top: cy,
+        width: colWidths[c],
+        height: rowHeights[r],
+        fill,
+        stroke: borderW > 0 ? border : null,
+        strokeWidth: borderW,
+        strokeUniform: true,
+        selectable: true,
+        hoverCursor: "move",
+      });
+      rect.isTableGrid = true;
+      rect.insertedTable = tableId;
+      rect.tableId = tableId;
+      rect.cellRow = r;
+      rect.cellCol = c;
+      canvas.add(rect);
+
+      const text = placeholder || "";
+      const it = new fabric.Textbox(text, {
+        left: cx + Math.max(4, colWidths[c] * 0.04),
+        top: cy + Math.max(2, rowHeights[r] * 0.08),
+        width: Math.max(10, colWidths[c] - Math.max(8, colWidths[c] * 0.08)),
+        fontSize: fs,
+        fontFamily: FONTS.helvetica.css,
+        fill: contrastOn(fill),
+        lineHeight: 1.15,
+        editable: true,
+        splitByGrapheme: true,
+        wordWrap: true,
+      });
+      it.pdfFont = "helvetica";
+      it.insertedTable = tableId;
+      it.tableId = tableId;
+      it.cellRow = r;
+      it.cellCol = c;
+      if (r === 0 && headerBold) it.set("fontWeight", "bold");
+      if (placeholder) {
+        if (r === 0 && c === 0) made.unshift(it);
+        else made.push(it);
+      } else {
+        made.push(it);
+      }
+      canvas.add(it);
+    }
+  }
     S.suppressHistory = false;
     canvas.requestRenderAll();
     pushHistory();
     syncLayers();
     if (made.length) {
-      /* Select just the first cell: dragging any cell moves the whole grid via
-         syncTableMove(), and wrapping new objects in an ActiveSelection
-         mid-gesture used to swallow the very first drag. */
       const editing = placeholder ? editTableCell(made[0]) : false;
       if (!editing) canvas.setActiveObject(made[0]);
       canvas.requestRenderAll();
     }
     closeModal("tableModal");
-    toast("Table inserted — drag it as one unit, double-click a cell to edit", 3600);
+    toast("Table inserted — drag as one unit, double-click a cell to edit", 3600);
   }
 
   /* ======================================================================
@@ -6017,6 +6783,25 @@
   /* ------------------------------ background removal ------------------------------ */
   $("bgClose").addEventListener("click", () => closeModal("bgModal"));
   $("bgDone").addEventListener("click", () => closeModal("bgModal"));
+  $("bgZoomIn").addEventListener("click", () => applyBgZoom((BG.zoom || 1) * 1.25));
+  $("bgZoomOut").addEventListener("click", () => applyBgZoom((BG.zoom || 1) / 1.25));
+  $("bgZoomReset").addEventListener("click", () => applyBgZoom(1));
+  $("bgZoomFit").addEventListener("click", () => {
+    const wrap = $("bgCanvasWrap");
+    if (!wrap || !BG.w || !BG.h) return applyBgZoom(1);
+    const pad = 32;
+    const scale = Math.min((wrap.clientWidth - pad) / BG.w, (wrap.clientHeight - pad) / BG.h, 1);
+    applyBgZoom(Math.max(BG.minZoom || 0.25, scale));
+  });
+  const bgWrap = $("bgCanvasWrap");
+  if (bgWrap) {
+    bgWrap.addEventListener("wheel", (e) => {
+      if (!document.getElementById("bgModal").classList.contains("open")) return;
+      e.preventDefault();
+      const dir = e.deltaY > 0 ? -1 : 1;
+      applyBgZoom((BG.zoom || 1) * (dir > 0 ? 1.12 : 0.892));
+    }, { passive: false });
+  }
   $("bgTools").querySelectorAll("[data-bgtool]").forEach((b) => {
     b.addEventListener("click", () => setBgTool(b.dataset.bgtool));
   });
@@ -6099,13 +6884,151 @@
   $("sigSave").addEventListener("click", saveCurrentSignature);
   $("sigInsert").addEventListener("click", insertSignature);
 
-  /* ------------------------------ insert table ------------------------------ */
+  /* ------------------------------ insert table / screenshot ------------------------------ */
   $("tblClose").addEventListener("click", () => closeModal("tableModal"));
   $("tblClose2").addEventListener("click", () => closeModal("tableModal"));
   $("tblNewPage").addEventListener("change", (e) => {
     document.querySelector('[data-size-root="table"]').hidden = !e.target.checked;
   });
   $("tblInsert").addEventListener("click", insertTableFromDialog);
+
+  document.querySelectorAll(".tool[data-action]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const act = btn.dataset.action;
+      if (act === "table") {
+        openTableTool();
+        document.querySelectorAll(".tool[data-action]").forEach((b) => b.classList.toggle("active", b === btn));
+        return;
+      }
+      if (act === "screenshot") {
+        if (!S.ready) return toast("Open a PDF first");
+        screenshotMode = true;
+        screenshotStart = null;
+        if (screenshotRect) { try { canvas.remove(screenshotRect); } catch(e){} screenshotRect = null; }
+        S.tool = "screenshot";
+        document.querySelectorAll(".tool[data-tool]").forEach((b) => b.classList.remove("active"));
+        document.querySelectorAll(".tool[data-action]").forEach((b) => b.classList.toggle("active", b === btn));
+        canvas.isDrawingMode = false;
+        canvas.selection = false;
+        canvas.defaultCursor = "crosshair";
+        canvas.hoverCursor = "crosshair";
+        canvas.moveCursor = "crosshair";
+        try { canvas.discardActiveObject(); canvas.renderAll(); } catch (e) {}
+        canvas.getObjects().forEach((o) => { if (!o.isTableHeader) { o.selectable = false; o.evented = false; } });
+        try {
+          if (canvas.lowerCanvasEl) canvas.lowerCanvasEl.style.cursor = "crosshair";
+          if (canvas.upperCanvasEl) canvas.upperCanvasEl.style.cursor = "crosshair";
+          const elc = canvas.getElement ? canvas.getElement() : null;
+          if (elc) elc.style.cursor = "crosshair";
+        } catch (e) {}
+        if (canvas.lowerCanvasEl) canvas.lowerCanvasEl.style.cursor = "crosshair";
+        if (canvas.upperCanvasEl) canvas.upperCanvasEl.style.cursor = "crosshair";
+        toast("Drag exactly on area to capture");
+        return;
+      }
+      if (act === "signature") {
+        openSignatureTool();
+        return;
+      }
+      if (act === "bg") {
+        openBackgroundTool();
+        return;
+      }
+    });
+  });
+
+  function getActiveTableId() {
+    const active = canvas.getActiveObject();
+    if (!active) return null;
+    if (active.type === "activeSelection" && active.getObjects) {
+      const objs = active.getObjects();
+      for (const o of objs) {
+        if (o.insertedTable || o.tableId) return o.insertedTable || o.tableId;
+      }
+    }
+    if (active.insertedTable || active.tableId) return active.insertedTable || active.tableId;
+    return null;
+  }
+
+  function getActiveCell() {
+    const active = canvas.getActiveObject();
+    if (!active) return null;
+    if (active.type === "activeSelection" && active.getObjects) {
+      const objs = active.getObjects();
+      for (const o of objs) {
+        if (!o.isTableHeader || o.headerType === "row" || o.headerType === "col" || o.headerType === "corner") {
+          if (o.insertedTable || o.tableId) return o;
+        }
+      }
+      return objs[0] || null;
+    }
+    return active;
+  }
+
+  function selectTableRow(tableId, rowIdx) {
+    const meta = getTableMeta(tableId);
+    if (!meta) return;
+    const objs = getTableCellObjs(tableId).filter((o) => !o.isTableHeader && o.cellRow === rowIdx);
+    if (!objs.length) return;
+    canvas.discardActiveObject();
+    canvas.setActiveObject(new fabric.ActiveSelection(objs, { canvas }));
+    canvas.requestRenderAll();
+    syncLayers();
+    syncProps();
+  }
+
+  function selectTableCol(tableId, colIdx) {
+    const meta = getTableMeta(tableId);
+    if (!meta) return;
+    const objs = getTableCellObjs(tableId).filter((o) => !o.isTableHeader && o.cellCol === colIdx);
+    if (!objs.length) return;
+    canvas.discardActiveObject();
+    canvas.setActiveObject(new fabric.ActiveSelection(objs, { canvas }));
+    canvas.requestRenderAll();
+    syncLayers();
+    syncProps();
+  }
+
+  function selectTableAll(tableId) {
+    const objs = getTableCellObjs(tableId).filter((o) => !o.isTableHeader);
+    if (!objs.length) return;
+    canvas.discardActiveObject();
+    canvas.setActiveObject(new fabric.ActiveSelection(objs, { canvas }));
+    canvas.requestRenderAll();
+    syncLayers();
+    syncProps();
+  }
+
+  $("tblAddRow")?.addEventListener("click", () => {
+    const id = getActiveTableId();
+    if (!id) return toast("Select a table cell first");
+    const cell = getActiveCell();
+    let idx = null;
+    if (cell && cell.cellRow != null) idx = cell.cellRow;
+    addTableRow(id, idx);
+  });
+  $("tblAddCol")?.addEventListener("click", () => {
+    const id = getActiveTableId();
+    if (!id) return toast("Select a table cell first");
+    const cell = getActiveCell();
+    let idx = null;
+    if (cell && cell.cellCol != null) idx = cell.cellCol;
+    addTableCol(id, idx);
+  });
+  $("tblDelRow")?.addEventListener("click", () => {
+    const id = getActiveTableId();
+    if (!id) return toast("Select a table cell first");
+    const cell = getActiveCell();
+    const idx = cell && cell.cellRow != null ? cell.cellRow : null;
+    delTableRow(id, idx);
+  });
+  $("tblDelCol")?.addEventListener("click", () => {
+    const id = getActiveTableId();
+    if (!id) return toast("Select a table cell first");
+    const cell = getActiveCell();
+    const idx = cell && cell.cellCol != null ? cell.cellCol : null;
+    delTableCol(id, idx);
+  });
 
   /* close modals on backdrop click / Escape */
   document.querySelectorAll(".modal").forEach((m) => {
@@ -6293,10 +7216,31 @@
           (p.rotation && p.rotation % 360 !== 0);
 
         if (needsRaster) {
-          const png = await out.embedPng(await renderComposite(i, 2));
+          const scale = mode === "flatten" ? 2.5 : 2;
+          const imgDataUrl = await renderComposite(i, scale);
           page.setRotation(degrees(0));
           page.setSize(p.width, p.height);
-          page.drawImage(png, { x: 0, y: 0, width: p.width, height: p.height });
+          if (mode === "flatten" && imgDataUrl.startsWith("data:image/png")) {
+            // Use JPEG for flattened export to reduce size while maintaining quality
+            try {
+              const img = await loadImageElement(imgDataUrl);
+              const c = document.createElement("canvas");
+              c.width = img.width;
+              c.height = img.height;
+              const ctx = c.getContext("2d");
+              ctx.fillStyle = "#ffffff";
+              ctx.fillRect(0, 0, c.width, c.height);
+              ctx.drawImage(img, 0, 0);
+              const jpg = await out.embedJpg(c.toDataURL("image/jpeg", 0.92));
+              page.drawImage(jpg, { x: 0, y: 0, width: p.width, height: p.height });
+            } catch (e) {
+              const png = await out.embedPng(imgDataUrl);
+              page.drawImage(png, { x: 0, y: 0, width: p.width, height: p.height });
+            }
+          } else {
+            const png = await out.embedPng(imgDataUrl);
+            page.drawImage(png, { x: 0, y: 0, width: p.width, height: p.height });
+          }
         } else {
           const objects = await enlivenPage(p);
           const H = page.getHeight();
@@ -6326,6 +7270,8 @@
     comp.width = w;
     comp.height = h;
     const ctx = comp.getContext("2d");
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
     ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, w, h);
 
@@ -6335,10 +7281,17 @@
     const objects = await enlivenPage(p);
     if (objects.length) {
       const layerEl = document.createElement("canvas");
-      const sc = new fabric.StaticCanvas(layerEl, { width: w, height: h });
+      const sc = new fabric.StaticCanvas(layerEl, {
+        width: w,
+        height: h,
+        enableRetinaScaling: false,
+        renderOnAddRemove: false,
+      });
       sc.setZoom(scale);
       objects.forEach((o) => sc.add(o));
       sc.renderAll();
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
       ctx.drawImage(layerEl, 0, 0);
       sc.dispose();
     }
@@ -6483,7 +7436,7 @@
   async function drawCustomTextObject(page, obj, pageH, out, op) {
     const b = obj.getBoundingRect(true, true);
     if (!b.width || !b.height) return;
-    const url = renderObjectToPng(obj, 3);
+    const url = renderObjectToPng(obj, 4);
     if (!url) return;
     const png = await out.embedPng(url);
     page.drawImage(png, {

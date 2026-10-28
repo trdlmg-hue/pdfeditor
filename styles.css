@@ -1005,24 +1005,38 @@ input[type="color"]::-webkit-color-swatch { border: 0; border-radius: 4px; }
   color: var(--muted);
 }
 .bg-toolbar .tol input { width: 110px; accent-color: var(--accent); }
+.bg-zoom-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  flex-wrap: wrap;
+}
 .bg-canvas-wrap {
   position: relative;
-  display: grid;
-  place-items: center;
+  display: block;
   min-height: 220px;
-  max-height: 54vh;
+  max-height: 58vh;
   overflow: auto;
-  padding: 10px;
+  padding: 14px;
   border: 1px solid var(--line);
   border-radius: 12px;
   background:
     linear-gradient(45deg, #1a2233 25%, transparent 25%, transparent 75%, #1a2233 75%) 0 0 / 16px 16px,
     linear-gradient(45deg, #1a2233 25%, #111827 25%, #111827 75%, #1a2233 75%) 8px 8px / 16px 16px;
+  scrollbar-gutter: stable;
+}
+.bg-canvas-inner {
+  position: relative;
+  margin: 0 auto;
+  width: max-content;
+  height: max-content;
+  transform-origin: top center;
 }
 .bg-canvas-wrap canvas {
   position: absolute;
-  max-width: calc(100% - 20px);
-  max-height: 50vh;
+  left: 0;
+  top: 0;
   display: block;
   image-rendering: auto;
   cursor: crosshair;

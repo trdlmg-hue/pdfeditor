@@ -10,6 +10,13 @@
   /* ------------------------------ libraries ------------------------------ */
   const pdfjsLib = window.pdfjsLib;
   const fabric = window.fabric;
+
+  /* Bigger corner handles for touch screens (phones / tablets). */
+  if (window.matchMedia && window.matchMedia("(pointer: coarse)").matches) {
+    fabric.Object.prototype.cornerSize = 22;
+    fabric.Object.prototype.touchCornerSize = 34;
+    fabric.Object.prototype.transparentCorners = false;
+  }
   const PDFLib = window.PDFLib;
 
   pdfjsLib.GlobalWorkerOptions.workerSrc =
@@ -64,6 +71,7 @@
   /* ------------------------------ state ------------------------------ */
   const S = {
     bytes: null,
+    pageNumbers: null,     // page-number settings (null = off)
     srcDoc: null,
     docs: new Map(),      // docId -> { doc, bytes, name, lib, encrypted }
     name: "",
@@ -1146,6 +1154,7 @@
     canvas.calcOffset();
     canvas.requestRenderAll();
     el.zoomLabel.textContent = Math.round(S.zoom * 100) + "%";
+    syncPageNumPreview();
   }
 
   /* --- pdf.js internals -------------------------------------------------
@@ -1904,6 +1913,7 @@
     refreshUndo();
     syncOriginals();
     syncTables();
+    syncPageNumPreview();
   }
 
   function updatePageChrome() {
@@ -6690,6 +6700,7 @@
 
   /* ------------------------------ pages modal ------------------------------ */
   $("pagesBtn").addEventListener("click", () => openPagesModal());
+  setupStudioExtras();
   $("pagesClose").addEventListener("click", () => closeModal("pagesModal"));
   $("pagesRotateCW").addEventListener("click", () => rotateSelectedPages(90));
   $("pagesRotateCCW").addEventListener("click", () => rotateSelectedPages(-90));
@@ -7170,6 +7181,135 @@
     return rec.lib;
   }
 
+
+  /* =====================================================================
+     PAGE NUMBERS  (preview on the current page + stamped on every export)
+     ===================================================================== */
+  const PN_FORMATS = {
+    "page-of": (n, t) => `Page ${n} of ${t}`,
+    "n-of": (n, t) => `${n} of ${t}`,
+    "n": (n) => String(n),
+    "dash": (n) => `- ${n} -`,
+  };
+
+  function pnInRange(i) {
+    const cfg = S.pageNumbers;
+    if (!cfg || i < 0 || i >= S.pages.length) return false;
+    if (cfg.skipFirst && i === 0) return false;
+    const to = Math.min(cfg.to, S.pages.length);
+    return i + 1 >= cfg.from && i + 1 <= to;
+  }
+
+  /* Number printed on document page i (0-based). Numbering follows the
+     document order, so page 1 shows `start`, page 2 shows `start + 1`, etc. */
+  function pnText(i) {
+    const cfg = S.pageNumbers;
+    const n = i + cfg.start;
+    const last = S.pages.length - 1 + cfg.start;
+    const fmt = PN_FORMATS[cfg.format] || PN_FORMATS["page-of"];
+    return fmt(n, last);
+  }
+
+  function pnColorRgb(hex) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(hex || "");
+    const n = m ? parseInt(m[1], 16) : 0;
+    return rgb(((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255);
+  }
+
+  /* Draws the number on a pdf-lib page (used by buildPdf for both modes). */
+  function stampPageNumber(page, i, font) {
+    if (!pnInRange(i)) return;
+    const cfg = S.pageNumbers;
+    const text = pnText(i);
+    const W = page.getWidth();
+    const H = page.getHeight();
+    const size = cfg.size;
+    const tw = font.widthOfTextAtSize(text, size);
+    const [vpos, hpos] = cfg.position.split("-");
+    const y = vpos === "top" ? H - cfg.margin - size : cfg.margin;
+    const x =
+      hpos === "left" ? cfg.margin : hpos === "right" ? W - cfg.margin - tw : (W - tw) / 2;
+    page.drawText(text, { x, y, size, font, color: pnColorRgb(cfg.color) });
+  }
+
+  /* On-screen preview: a plain DOM label placed over the current page. */
+  function syncPageNumPreview() {
+    const node = $("pnPreview");
+    if (!node) return;
+    const cfg = S.pageNumbers;
+    if (!cfg || !S.pages.length || !pnInRange(S.index)) {
+      node.hidden = true;
+      return;
+    }
+    node.hidden = false;
+    node.textContent = pnText(S.index);
+    node.dataset.pos = cfg.position;
+    node.style.fontSize = cfg.size * S.zoom + "px";
+    node.style.color = cfg.color;
+    node.style.setProperty("--pn-m", cfg.margin * S.zoom + "px");
+  }
+
+  function setupStudioExtras() {
+    const num = (id, d) => {
+      const v = parseFloat($(id).value);
+      return Number.isFinite(v) ? v : d;
+    };
+
+    $("pnBtn").addEventListener("click", () => {
+      if (!S.ready) return toast("Open a PDF first");
+      const cfg = S.pageNumbers || {
+        format: "page-of", position: "bottom-center", start: 1, size: 11,
+        color: "#111827", margin: 24, from: 1, to: S.pages.length, skipFirst: false,
+      };
+      $("pnFormat").value = cfg.format;
+      $("pnPosition").value = cfg.position;
+      $("pnStart").value = cfg.start;
+      $("pnSize").value = cfg.size;
+      $("pnColor").value = cfg.color;
+      $("pnMargin").value = cfg.margin;
+      $("pnFrom").value = cfg.from;
+      $("pnFrom").max = S.pages.length;
+      $("pnTo").value = cfg.to;
+      $("pnTo").max = S.pages.length;
+      $("pnSkipFirst").checked = !!cfg.skipFirst;
+      openModal("pnModal");
+    });
+
+    $("pnClose").addEventListener("click", () => closeModal("pnModal"));
+
+    $("pnApply").addEventListener("click", () => {
+      const total = S.pages.length;
+      const from = clamp(Math.round(num("pnFrom", 1)), 1, total);
+      let to = clamp(Math.round(num("pnTo", total)), 1, total);
+      if (to < from) [to, from] = [from, to];
+      S.pageNumbers = {
+        format: $("pnFormat").value,
+        position: $("pnPosition").value,
+        start: clamp(Math.round(num("pnStart", 1)), 0, 9999),
+        size: clamp(num("pnSize", 11), 4, 72),
+        color: $("pnColor").value,
+        margin: clamp(num("pnMargin", 24), 0, 300),
+        from,
+        to,
+        skipFirst: $("pnSkipFirst").checked,
+      };
+      closeModal("pnModal");
+      syncPageNumPreview();
+      toast("Page numbers set — they are added when you export");
+    });
+
+    $("pnOff").addEventListener("click", () => {
+      S.pageNumbers = null;
+      closeModal("pnModal");
+      syncPageNumPreview();
+      toast("Page numbers removed");
+    });
+
+    /* Mobile: the properties panel opens as a bottom sheet. */
+    $("sheetBtn").addEventListener("click", () => document.body.classList.toggle("sheet-open"));
+    $("sheetClose").addEventListener("click", () => document.body.classList.remove("sheet-open"));
+  }
+
   async function buildPdf(mode, pageIndices) {
     if (!S.pages.length) throw new Error("No PDF loaded");
     savePage();
@@ -7182,6 +7322,7 @@
       }
       const out = await PDFDocument.create();
       const getFont = await getFontFactory(out);
+      const pnFont = S.pageNumbers ? await out.embedFont(StandardFonts.Helvetica) : null;
       let hiddenPages = 0;
       const seq =
         Array.isArray(pageIndices) && pageIndices.length
@@ -7248,6 +7389,8 @@
             await drawObject(page, obj, H, out, getFont);
           }
         }
+
+        if (pnFont) stampPageNumber(page, i, pnFont);
 
         await new Promise((r) => setTimeout(r, 0));
       }

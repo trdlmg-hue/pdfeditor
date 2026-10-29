@@ -297,6 +297,19 @@ land on the **same pixels** (mean channel difference ≤ 0.12/255, typically 0.0
 17. **Page rotation** rotates the original page as a whole with your layers. A 90°/270° page is
     exported rasterized in Vector mode; Flatten mode always matches the screen exactly.
 
+## Page numbers
+
+Click **Page #** in the top bar. Choose the format (`Page 1 of 10`, `1 of 10`, `1`, `- 1 -`),
+position (six spots on the page), start number, font size, colour, distance from the edge, and
+which pages to number (from / to page, optionally skip the cover). A dashed live preview shows
+the number on the current page. The numbers are added when you export (Vector or Flattened).
+**Remove numbers** turns them off.
+
+## Mobile and tablet
+
+On phones and small screens the tools move to a bottom bar, and the properties panel opens as a
+bottom sheet from the **Properties** button. Handles are larger on touch screens.
+
 ---
 
 ## Files

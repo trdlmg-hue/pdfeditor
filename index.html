@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#0b0f19" />
 <title>PDF Studio — layered PDF editor</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -76,9 +77,11 @@
     <button id="delPageBtn" class="btn icon" title="Delete this page"><svg class="ico"><use href="#i-trash"/></svg></button>
     <button id="pagesBtn" class="btn" title="Manage all pages">Pages</button>
     <button id="mergeBtn" class="btn" title="Merge PDFs or split this document">Merge / Split</button>
+    <button id="pnBtn" class="btn" title="Add page numbers">Page #</button>
   </div>
 
   <div class="group right">
+    <button id="sheetBtn" class="btn mobile-only" title="Show properties">Properties</button>
     <div class="menu">
       <button id="exportBtn" class="btn primary">Export <svg class="ico"><use href="#i-chevron-down"/></svg></button>
       <div class="menu-items" id="exportMenu">
@@ -148,6 +151,7 @@
     <div class="page" id="pageWrap">
       <canvas id="bgCanvas"></canvas>
       <canvas id="c"></canvas>
+      <div class="pn-preview" id="pnPreview" hidden></div>
     </div>
 
     <div class="empty" id="emptyState">
@@ -165,6 +169,7 @@
   </section>
 
   <aside class="panel">
+    <div class="sheet-bar mobile-only"><span>Properties</span><button class="btn tiny" id="sheetClose">Done</button></div>
     <div class="panel-section">
       <h3>Properties</h3>
 
@@ -439,6 +444,58 @@
 <input type="file" id="insertImagePageInput" accept="image/*" multiple hidden />
 
 <!-- ===================== MERGE / SPLIT ===================== -->
+<div class="modal" id="pnModal" aria-hidden="true">
+  <div class="modal-card pn-card">
+    <header class="modal-head">
+      <h2>Page numbers</h2>
+      <button class="modal-x" id="pnClose" title="Close">×</button>
+    </header>
+    <div class="pn-grid">
+      <label>Format
+        <select id="pnFormat">
+          <option value="page-of">Page 1 of 10</option>
+          <option value="n-of">1 of 10</option>
+          <option value="n">1</option>
+          <option value="dash">- 1 -</option>
+        </select>
+      </label>
+      <label>Position
+        <select id="pnPosition">
+          <option value="bottom-center">Bottom centre</option>
+          <option value="bottom-right">Bottom right</option>
+          <option value="bottom-left">Bottom left</option>
+          <option value="top-center">Top centre</option>
+          <option value="top-right">Top right</option>
+          <option value="top-left">Top left</option>
+        </select>
+      </label>
+      <label>Start numbering at
+        <input type="number" id="pnStart" value="1" min="0" max="9999" />
+      </label>
+      <label>Font size (pt)
+        <input type="number" id="pnSize" value="11" min="4" max="72" step="0.5" />
+      </label>
+      <label>Colour
+        <input type="color" id="pnColor" value="#111827" />
+      </label>
+      <label>Distance from edge (pt)
+        <input type="number" id="pnMargin" value="24" min="0" max="300" />
+      </label>
+      <label>From page
+        <input type="number" id="pnFrom" value="1" min="1" />
+      </label>
+      <label>To page
+        <input type="number" id="pnTo" value="1" min="1" />
+      </label>
+      <label class="check"><input type="checkbox" id="pnSkipFirst" /> Skip the first page (cover)</label>
+    </div>
+    <p class="hint">Numbers are added when you export (Vector or Flattened PDF). The dashed label on the page is a live preview.</p>
+    <div class="modal-actions">
+      <button class="btn" id="pnOff">Remove numbers</button>
+      <button class="btn primary" id="pnApply">Apply</button>
+    </div>
+  </div>
+</div>
 <div class="modal" id="mergeModal" aria-hidden="true">
   <div class="modal-card merge-card">
     <header class="modal-head">
